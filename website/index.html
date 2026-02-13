@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoundVzn - Audio de Alta Fidelidad</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="logo-container">
+            <img src="assets/logo.svg" alt="SoundVzn Logo" class="logo-img">
+            <span class="logo-text">SoundVzn</span>
+        </div>
+        <div class="nav-links">
+            <a href="#features">Características</a>
+            <a href="#download" class="btn-primary">Descargar</a>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">Experimenta la<br><span class="gradient-text">Perfección Auditiva</span></h1>
+            <p class="hero-subtitle">El reproductor definitivo para audiófilos. Alta fidelidad, diseño premium y control
+                total sobre tu música.</p>
+            <div class="hero-actions">
+                <a href="#download" class="btn-large glow">Descargar Gratis</a>
+                <span class="version-tag">v0.1.0 • Windows x64</span>
+            </div>
+        </div>
+        <div class="hero-visual">
+            <div class="visual-circle"></div>
+            <img src="assets/logo.svg" alt="SoundVzn App" class="app-preview floating">
+        </div>
+    </header>
+
+    <section id="features" class="features">
+        <div class="feature-card glass">
+            <div class="icon">🎵</div>
+            <h3>Alta Fidelidad</h3>
+            <p>Soporte nativo para FLAC, WAV y DSD. Motor de audio de 32-bits para una claridad cristalina.</p>
+        </div>
+        <div class="feature-card glass">
+            <div class="icon">🔗</div>
+            <h3>API Unificada</h3>
+            <p>Tus metadatos, letras y carátulas sincronizados automáticamente desde múltiples fuentes.</p>
+        </div>
+        <div class="feature-card glass">
+            <div class="icon">⚡</div>
+            <h3>Ultrarrápido</h3>
+            <p>Construido con tecnología moderna para un inicio instantáneo y cero latencia.</p>
+        </div>
+    </section>
+
+    <section id="download" class="download-section">
+        <h2>Descarga SoundVzn</h2>
+        <p>Disponible para todas tus plataformas favoritas.</p>
+
+        <div class="download-grid">
+            <div class="download-card glass windows active">
+                <div class="os-icon">🪟</div>
+                <h3>Windows</h3>
+                <p>x64 • Windows 10/11</p>
+                <a href="#" class="btn-download">Descargar .exe</a>
+            </div>
+            <div class="download-card glass mac">
+                <div class="os-icon">🍎</div>
+                <h3>macOS</h3>
+                <p>Apple Silicon / Intel</p>
+                <button class="btn-download disabled">Próximamente</button>
+            </div>
+            <div class="download-card glass android">
+                <div class="os-icon">🤖</div>
+                <h3>Android</h3>
+                <p>APK Universal</p>
+                <button class="btn-download disabled">Próximamente</button>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2024 SoundVzn Team. Hecho con ❤️ para la música.</p>
+    </footer>
+
+    <script>
+        // Simple interactions
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
