@@ -1,53 +1,29 @@
-import { getSpotifyToken } from './apiConfig';
+import { UnifiedTrackMetadata } from '../types';
+import { getAPIConfig } from './apiConfig';
+import * as Cache from './cacheManager';
+import * as Spotify from './spotifyAPI';
 
-export interface UnifiedTrackMetadata {
-  title: string;
-  artist: string;
-  album: string;
-  albumArtist?: string;
-  year?: number;
-  genre?: string[];
-  duration: number;
-  isrc?: string;
-  artwork: {
-    small?: string;
-    medium?: string;
-    large?: string;
-    extralarge?: string;
-  };
-  externalIds: {
-    spotify?: string;
-    appleMusic?: string;
-    deezer?: string;
-    musicbrainz?: string;
-  };
-  popularity?: number;
-  previewUrl?: string;
-  source: 'spotify' | 'itunes' | 'deezer' | 'musicbrainz' | 'lastfm';
+const SEARCH_REQUEST_TIMEOUT_MS = 5000;
+
+async function fetchJsonWithTimeout(url: string, init?: RequestInit, timeoutMs: number = SEARCH_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function searchSpotifyAPI(query: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
   try {
-    const token = await getSpotifyToken();
-
-    const response = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) throw new Error('Spotify API error');
-
-    const data = await response.json();
-
-    return data.tracks.items.map((track: any) => ({
+    const items = await Spotify.searchSpotifyTracks(query, limit);
+    return items.map((track: any) => ({
       title: track.name,
       artist: track.artists.map((a: any) => a.name).join(', '),
       album: track.album.name,
-      albumArtist: track.album.artists[0]?.name,
+      albumArtist: (track.album as any).artists?.[0]?.name,
       year: track.album.release_date ? new Date(track.album.release_date).getFullYear() : undefined,
       genre: [],
       duration: Math.floor(track.duration_ms / 1000),
@@ -71,46 +47,15 @@ export async function searchSpotifyAPI(query: string, limit: number = 20): Promi
   }
 }
 
-export async function searchITunesAPI(query: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
-  try {
-    const response = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=${limit}`
-    );
-
-    if (!response.ok) throw new Error('iTunes API error');
-
-    const data = await response.json();
-
-    return data.results.map((track: any) => ({
-      title: track.trackName,
-      artist: track.artistName,
-      album: track.collectionName,
-      albumArtist: track.artistName,
-      year: track.releaseDate ? new Date(track.releaseDate).getFullYear() : undefined,
-      genre: track.primaryGenreName ? [track.primaryGenreName] : [],
-      duration: Math.floor(track.trackTimeMillis / 1000),
-      artwork: {
-        small: track.artworkUrl60,
-        medium: track.artworkUrl100,
-        large: track.artworkUrl100?.replace('100x100', '600x600'),
-        extralarge: track.artworkUrl100?.replace('100x100', '1200x1200'),
-      },
-      externalIds: {
-        appleMusic: track.trackId?.toString(),
-      },
-      previewUrl: track.previewUrl,
-      source: 'itunes' as const,
-    }));
-  } catch (error) {
-    console.error('iTunes search error:', error);
-    return [];
-  }
+export async function searchITunesAPI(_query: string, _limit: number = 20): Promise<UnifiedTrackMetadata[]> {
+  // Disabled in renderer flow due frequent 403/CORS in desktop webview.
+  return [];
 }
 
 export async function searchDeezerAPI(query: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
   try {
-    const response = await fetch(
-      `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    const response = await fetchJsonWithTimeout(
+      `/api-deezer/search?q=${encodeURIComponent(query)}&limit=${limit}`
     );
 
     if (!response.ok) throw new Error('Deezer API error');
@@ -123,6 +68,7 @@ export async function searchDeezerAPI(query: string, limit: number = 20): Promis
       album: track.album.title,
       albumArtist: track.artist.name,
       duration: track.duration,
+      popularity: typeof track.rank === 'number' ? Math.min(100, Math.floor(track.rank / 10000)) : undefined,
       artwork: {
         small: track.album.cover_small,
         medium: track.album.cover_medium,
@@ -143,11 +89,12 @@ export async function searchDeezerAPI(query: string, limit: number = 20): Promis
 
 export async function searchMusicBrainzAPI(query: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
   try {
-    const response = await fetch(
+    const response = await fetchJsonWithTimeout(
       `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}`,
       {
         headers: {
-          'User-Agent': 'SoundVzn/1.0.0 (contact@soundvzn.com)',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
         },
       }
     );
@@ -181,13 +128,20 @@ export async function searchMusicBrainzAPI(query: string, limit: number = 20): P
   }
 }
 
-export async function searchLastFmAPI(query: string, apiKey: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
+export async function searchLastFmAPI(query: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
   try {
-    const response = await fetch(
+    const config = getAPIConfig();
+    const apiKey = config.lastfm.apiKey;
+
+    if (!apiKey) {
+      return [];
+    }
+
+    const response = await fetchJsonWithTimeout(
       `https://ws.audioscrobbler.com/2.0/?method=track.search&track=${encodeURIComponent(query)}&api_key=${apiKey}&format=json&limit=${limit}`
     );
 
-    if (!response.ok) throw new Error('Last.fm API error');
+    if (!response.ok) return [];
 
     const data = await response.json();
 
@@ -211,67 +165,277 @@ export async function searchLastFmAPI(query: string, apiKey: string, limit: numb
       externalIds: {},
       source: 'lastfm' as const,
     }));
-  } catch (error) {
-    console.error('Last.fm search error:', error);
+  } catch (error: any) {
+    if (error.message?.includes('suspended') || error.message?.includes('403')) {
+      // Last.fm key is suspended or invalid, fail silently to avoid console clutter
+      return [];
+    }
+    console.warn('Last.fm search skipped:', (error as any)?.message || error);
     return [];
   }
 }
 
-export async function searchUnifiedMultiSource(query: string): Promise<UnifiedTrackMetadata[]> {
-  const results = await Promise.allSettled([
-    searchSpotifyAPI(query, 15),
-    searchITunesAPI(query, 15),
-    searchDeezerAPI(query, 15),
-    searchMusicBrainzAPI(query, 10),
+type LightArtist = {
+  id: string;
+  name: string;
+  image?: string;
+  listeners?: number;
+  popularity?: number;
+  externalIds?: Record<string, string>;
+};
+
+type LightAlbum = {
+  id: string;
+  name: string;
+  artist?: string;
+  image?: string;
+  year?: number;
+  externalIds?: Record<string, string>;
+};
+
+function normalizeKey(text: string) {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function normalizeTrackName(name: string) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\[.*?\]/g, ' ')
+    .replace(/\bfeat\.?.*/g, ' ')
+    .replace(/\b(ft|featuring)\b.*/g, ' ')
+    .replace(/\b(remix|live|acoustic|version|edit|radio edit)\b/g, ' ')
+    .replace(/\b(audio|official|oficial|video|visualizer|lyrics|lyric|topic)\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeArtistName(name: string) {
+  return (name || '')
+    .toLowerCase()
+    .split(/,|&| y | and | x /)[0]
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function trackDuplicateKey(track: UnifiedTrackMetadata) {
+  return `${normalizeTrackName(track.title)}|${normalizeArtistName(track.artist)}`;
+}
+
+function pickPreferredTrack(existing: UnifiedTrackMetadata, candidate: UnifiedTrackMetadata) {
+  const score = (t: UnifiedTrackMetadata) => {
+    let s = 0;
+    if (t.artwork?.large || t.artwork?.medium) s += 2;
+    if (t.duration && t.duration > 0) s += 1;
+    if (t.previewUrl) s += 1;
+    if (t.source === 'itunes' || t.source === 'deezer') s += 1;
+    return s;
+  };
+  return score(candidate) > score(existing) ? candidate : existing;
+}
+
+function searchRelevanceScore(track: UnifiedTrackMetadata, query: string): number {
+  const q = normalizeKey(query);
+  const t = normalizeTrackName(track.title);
+  const a = normalizeArtistName(track.artist);
+  let score = 0;
+  if (`${t} ${a}` === q) score += 100;
+  if (t === q) score += 80;
+  if (a === q) score += 60;
+  if (t.startsWith(q)) score += 35;
+  if (a.startsWith(q)) score += 25;
+  if (t.includes(q)) score += 15;
+  if (a.includes(q)) score += 10;
+  if (track.source === 'itunes') score += 6;
+  if (track.source === 'deezer') score += 4;
+  if (track.source === 'musicbrainz') score -= 2;
+  score += track.popularity ? Math.min(track.popularity, 100) * 0.05 : 0;
+  return score;
+}
+
+async function searchArtistsLight(query: string, limit: number = 12): Promise<LightArtist[]> {
+  const [deezerData, musicBrainzData] = await Promise.allSettled([
+    (async () => {
+      const response = await fetchJsonWithTimeout(`/api-deezer/search?q=${encodeURIComponent(query)}&limit=${limit * 2}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.data || [];
+    })(),
+    (async () => {
+      const response = await fetchJsonWithTimeout(
+        `https://musicbrainz.org/ws/2/artist?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' } }
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.artists || [];
+    })(),
   ]);
 
-  const allTracks: UnifiedTrackMetadata[] = [];
+  const map = new Map<string, LightArtist>();
 
-  results.forEach((result) => {
-    if (result.status === 'fulfilled') {
-      allTracks.push(...result.value);
+  if (deezerData.status === 'fulfilled') {
+    for (const row of deezerData.value) {
+      const artistName = row?.artist?.name || '';
+      const key = normalizeKey(artistName);
+      if (!key) continue;
+      map.set(key, {
+        id: `deezer-artist:${row.artist?.id || key}`,
+        name: artistName,
+        image: row.artist?.picture_medium || row.artist?.picture_big,
+        externalIds: { deezer: String(row.artist?.id || '') },
+      });
     }
-  });
+  }
 
-  const uniqueTracks = new Map<string, UnifiedTrackMetadata>();
-
-  allTracks.forEach((track) => {
-    const key = `${track.title.toLowerCase()}_${track.artist.toLowerCase()}`.replace(/[^a-z0-9_]/g, '');
-    
-    const existing = uniqueTracks.get(key);
-    if (!existing || track.source === 'spotify') {
-      uniqueTracks.set(key, track);
+  if (musicBrainzData.status === 'fulfilled') {
+    for (const a of musicBrainzData.value.slice(0, limit)) {
+      const key = normalizeKey(a.name || '');
+      if (!key || map.has(key)) continue;
+      map.set(key, {
+        id: `mb-artist:${a.id || key}`,
+        name: a.name,
+        externalIds: { musicbrainz: a.id },
+      });
     }
-  });
+  }
 
-  return Array.from(uniqueTracks.values()).slice(0, 30);
+  return Array.from(map.values()).slice(0, limit);
+}
+
+async function searchAlbumsLight(query: string, limit: number = 12): Promise<LightAlbum[]> {
+  const [deezerData, musicBrainzData] = await Promise.allSettled([
+    (async () => {
+      const response = await fetchJsonWithTimeout(`/api-deezer/search?q=${encodeURIComponent(query)}&limit=${limit * 2}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.data || [];
+    })(),
+    (async () => {
+      const response = await fetchJsonWithTimeout(
+        `https://musicbrainz.org/ws/2/release-group?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}&type=album|ep|single`,
+        { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' } }
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data['release-groups'] || [];
+    })(),
+  ]);
+
+  const map = new Map<string, LightAlbum>();
+
+  if (deezerData.status === 'fulfilled') {
+    for (const row of deezerData.value) {
+      const albumName = row?.album?.title || '';
+      const artistName = row?.artist?.name || '';
+      const key = normalizeKey(`${albumName} ${artistName}`);
+      if (!key) continue;
+      map.set(key, {
+        id: `deezer-album:${row.album?.id || key}`,
+        name: albumName,
+        artist: artistName,
+        image: row.album?.cover_medium || row.album?.cover_big || row.album?.cover_xl,
+        externalIds: { deezer: String(row.album?.id || '') },
+      });
+    }
+  }
+
+  if (musicBrainzData.status === 'fulfilled') {
+    for (const a of musicBrainzData.value.slice(0, limit)) {
+      const albumName = a?.title || '';
+      const artistName = a?.['artist-credit']?.[0]?.name || '';
+      const key = normalizeKey(`${albumName} ${artistName}`);
+      if (!key) continue;
+      if (map.has(key)) continue;
+      map.set(key, {
+        id: `mb-album:${a.id || key}`,
+        name: albumName,
+        artist: artistName,
+        image: a?.id ? `https://coverartarchive.org/release-group/${a.id}/front-500` : undefined,
+        year: a?.['first-release-date'] ? new Date(a['first-release-date']).getFullYear() : undefined,
+        externalIds: { musicbrainz: a.id },
+      });
+    }
+  }
+
+  return Array.from(map.values()).slice(0, limit);
+}
+
+export async function searchUnifiedMultiSource(query: string): Promise<UnifiedTrackMetadata[]> {
+  try {
+    const cacheKey = `v2:${query.toLowerCase().trim()}`;
+    const cached = await Cache.getCachedSearch(cacheKey, 'unified');
+    if (cached) return cached;
+
+    // Spotify intentionally excluded from primary search path.
+    // MusicBrainz is kept for artist/album metadata, not primary song ranking.
+    const results = await Promise.allSettled([
+      searchITunesAPI(query, 12),
+      searchDeezerAPI(query, 12),
+    ]);
+
+    const allTracks: UnifiedTrackMetadata[] = [];
+
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        allTracks.push(...result.value);
+      }
+    });
+
+    const uniqueTracks = new Map<string, UnifiedTrackMetadata>();
+
+    allTracks.forEach((track) => {
+      const key = trackDuplicateKey(track);
+      const existing = uniqueTracks.get(key);
+      if (!existing) {
+        uniqueTracks.set(key, track);
+      } else {
+        uniqueTracks.set(key, pickPreferredTrack(existing, track));
+      }
+    });
+
+    const sortedTracks = Array.from(uniqueTracks.values())
+      .sort((a, b) => searchRelevanceScore(b, query) - searchRelevanceScore(a, query));
+
+    const finalizedTracks = sortedTracks
+      .filter((t) => searchRelevanceScore(t, query) >= 12)
+      .slice(0, 30);
+
+    const outputTracks = finalizedTracks.length > 0 ? finalizedTracks : sortedTracks.slice(0, 30);
+    await Cache.setCachedSearch(cacheKey, 'unified', outputTracks);
+    return outputTracks;
+  } catch (error) {
+    console.error('Unified search error:', error);
+    return [];
+  }
+}
+
+export async function searchEverything(query: string) {
+  const [tracksResult, albumsResult, artistsResult] = await Promise.allSettled([
+    searchUnifiedMultiSource(query),
+    searchAlbumsLight(query, 12),
+    searchArtistsLight(query, 12),
+  ]);
+
+  return {
+    tracks: tracksResult.status === 'fulfilled' ? tracksResult.value : [],
+    albums: albumsResult.status === 'fulfilled' ? albumsResult.value : [],
+    artists: artistsResult.status === 'fulfilled' ? artistsResult.value : [],
+  };
 }
 
 export async function getTrackMetadataByISRC(isrc: string): Promise<UnifiedTrackMetadata | null> {
   try {
-    const token = await getSpotifyToken();
-
-    const response = await fetch(
-      `https://api.spotify.com/v1/search?q=isrc:${isrc}&type=track&limit=1`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    if (data.tracks.items.length === 0) return null;
-
-    const track = data.tracks.items[0];
+    const track = await Spotify.getSpotifyTrackByISRC(isrc);
+    if (!track) return null;
     return {
       title: track.name,
       artist: track.artists.map((a: any) => a.name).join(', '),
       album: track.album.name,
-      albumArtist: track.album.artists[0]?.name,
-      year: track.album.release_date ? new Date(track.album.release_date).getFullYear() : undefined,
+      albumArtist: (track.album as any).artists?.[0]?.name,
+      year: (track.album as any).release_date ? new Date((track.album as any).release_date).getFullYear() : undefined,
       genre: [],
       duration: Math.floor(track.duration_ms / 1000),
       isrc: track.external_ids?.isrc,
@@ -285,7 +449,7 @@ export async function getTrackMetadataByISRC(isrc: string): Promise<UnifiedTrack
         spotify: track.id,
       },
       popularity: track.popularity,
-      previewUrl: track.preview_url,
+      previewUrl: track.preview_url || undefined,
       source: 'spotify',
     };
   } catch (error) {

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePlayerStore } from '@store/player';
 import { EQ_FREQUENCIES, EQ_PRESETS, applyEQPreset, setEQGain, enableMobileOptimization } from '@utils/audioProcessor';
 
 export const Equalizer: React.FC = () => {
@@ -93,11 +92,10 @@ export const Equalizer: React.FC = () => {
               whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => handlePresetChange(preset)}
-              className={`px-4 py-3 rounded-lg font-semibold transition-all ${
-                selectedPreset === preset
-                  ? 'bg-primary-600 text-white shadow-lg'
-                  : 'bg-dark-700 text-gray-400 hover:bg-dark-600 hover:text-white'
-              }`}
+              className={`px-4 py-3 rounded-lg font-semibold transition-all ${selectedPreset === preset
+                ? 'bg-primary-600 text-white shadow-lg'
+                : 'bg-dark-700 text-gray-400 hover:bg-dark-600 hover:text-white'
+                }`}
             >
               {preset.replace(/_/g, ' ').toUpperCase()}
             </motion.button>
@@ -123,11 +121,15 @@ export const Equalizer: React.FC = () => {
                         step="0.5"
                         value={eqValues[index]}
                         onChange={(e) => handleBandChange(index, parseFloat(e.target.value))}
-                        orient="vertical"
-                        className="h-48 cursor-pointer appearance-none bg-transparent [writing-mode:bt-lr] [-webkit-appearance:slider-vertical] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary-500 [&::-webkit-slider-runnable-track]:w-2 [&::-webkit-slider-runnable-track]:bg-dark-700 [&::-webkit-slider-runnable-track]:rounded-full"
+                        className="h-48 cursor-pointer appearance-none bg-transparent"
+                        style={{
+                          writingMode: 'vertical-lr',
+                          direction: 'rtl',
+                          WebkitAppearance: 'none'
+                        }}
                       />
                     </div>
-                    
+
                     <div className="text-center">
                       <div className="text-primary-400 font-bold text-sm mb-1">
                         {eqValues[index] > 0 ? '+' : ''}{eqValues[index].toFixed(1)} dB

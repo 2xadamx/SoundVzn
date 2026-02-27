@@ -1,0 +1,29 @@
+﻿src/components/AudioVisualizer.tsx(47,37): error TS2345: Argument of type 'Uint8Array<ArrayBufferLike>' is not assignable to parameter of type 'Uint8Array<ArrayBuffer>'.
+  Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+    Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+      Types of property '[Symbol.toStringTag]' are incompatible.
+        Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+src/components/Equalizer.tsx(3,1): error TS6133: 'usePlayerStore' is declared but its value is never read.
+src/components/layout/HeaderPopovers.tsx(6,18): error TS6133: 'AnimatePresence' is declared but its value is never read.
+src/components/Library.tsx(7,23): error TS6137: Cannot import type declaration files. Consider importing 'index' instead of '@types/index'.
+src/components/Library.tsx(57,13): error TS2353: Object literal may only specify known properties, and 'addedDate' does not exist in type 'Track'.
+src/components/MiniPlayer.tsx(1,27): error TS6133: 'useEffect' is declared but its value is never read.
+src/components/MiniPlayer.tsx(2,18): error TS6133: 'AnimatePresence' is declared but its value is never read.
+src/components/MiniPlayer.tsx(11,20): error TS6133: 'setPosition' is declared but its value is never read.
+src/components/MiniPlayer.tsx(12,10): error TS6133: 'isDragging' is declared but its value is never read.
+src/components/Onboarding.tsx(3,1): error TS6133: 'usePlayerStore' is declared but its value is never read.
+src/components/player/AudioEngineDashboard.tsx(1,46): error TS6133: 'useMemo' is declared but its value is never read.
+src/components/player/AudioEngineDashboard.tsx(14,11): error TS6133: 'isPlaying' is declared but its value is never read.
+src/components/playlists/PlaylistSelector.tsx(2,18): error TS6133: 'AnimatePresence' is declared but its value is never read.
+src/components/Stats.tsx(15,9): error TS6133: 'currentTrack' is declared but its value is never read.
+src/components/views/FollowedPlaylistsView.tsx(11,11): error TS6133: 'playUnifiedCollection' is declared but its value is never read.
+src/components/views/LyricsView.tsx(3,99): error TS6133: 'Repeat' is declared but its value is never read.
+src/components/views/LyricsView.tsx(3,107): error TS6133: 'Shuffle' is declared but its value is never read.
+src/store/library.ts(2,23): error TS6137: Cannot import type declaration files. Consider importing 'index' instead of '@types/index'.
+src/store/library.ts(79,26): error TS2339: Property 'addedDate' does not exist on type 'Track'.
+src/store/library.ts(79,50): error TS2339: Property 'addedDate' does not exist on type 'Track'.
+src/utils/apiConfig.ts(23,27): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/utils/apiConfig.ts(28,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/utils/apiConfig.ts(64,22): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/utils/apiConfig.ts(96,5): error TS2322: Type 'string | null' is not assignable to type 'string'.
+  Type 'null' is not assignable to type 'string'.

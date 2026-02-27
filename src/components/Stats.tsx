@@ -1,6 +1,5 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { usePlayerStore } from '@store/player';
 
 interface StatsData {
   totalTracks: number;
@@ -12,8 +11,6 @@ interface StatsData {
 }
 
 export const Stats: React.FC = () => {
-  const { currentTrack } = usePlayerStore();
-
   const mockStats: StatsData = {
     totalTracks: 1247,
     totalListenTime: 52840,
@@ -82,7 +79,7 @@ export const Stats: React.FC = () => {
             <motion.div
               className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors"
             />
-            
+
             <div className="relative z-10">
               <div className="text-4xl mb-3">{stat.icon}</div>
               <div className="text-3xl font-bold text-white mb-1">{stat.value}</div>
@@ -115,7 +112,7 @@ export const Stats: React.FC = () => {
             <span className="text-2xl mr-2">🔥</span>
             Top 5 Esta Semana
           </h2>
-          
+
           {[1, 2, 3, 4, 5].map((rank) => (
             <motion.div
               key={rank}
@@ -124,23 +121,23 @@ export const Stats: React.FC = () => {
             >
               <div className={`
                 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
-                ${rank === 1 ? 'bg-yellow-500 text-black' : 
-                  rank === 2 ? 'bg-gray-300 text-black' : 
-                  rank === 3 ? 'bg-orange-600 text-white' : 
-                  'bg-dark-700 text-gray-400'}
+                ${rank === 1 ? 'bg-yellow-500 text-black' :
+                  rank === 2 ? 'bg-gray-300 text-black' :
+                    rank === 3 ? 'bg-orange-600 text-white' :
+                      'bg-dark-700 text-gray-400'}
               `}>
                 {rank}
               </div>
-              
+
               <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-xl">
                 🎵
               </div>
-              
+
               <div className="flex-1">
                 <div className="text-white font-semibold">Canción {rank}</div>
                 <div className="text-gray-400 text-sm">Artista {rank}</div>
               </div>
-              
+
               <div className="text-right">
                 <div className="text-primary-400 font-semibold">{150 - rank * 10}</div>
                 <div className="text-gray-500 text-xs">reproducciones</div>

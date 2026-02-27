@@ -111,23 +111,17 @@ Las siguientes APIs funcionan automáticamente sin necesidad de API keys:
 6. Copia Client ID y Client Secret
 ```
 
-**2. Configurar en SoundVzn:**
+**2. Configurar en SoundVzn (seguridad correcta):**
 ```
-1. Abre SoundVzn
-2. Ve a ⚙️ Configuración (Settings)
-3. Pega Client ID y Client Secret
-4. Click "Guardar Configuración"
-5. Click "Probar Conexiones"
-```
+🔒 El Client Secret NUNCA se pone en la app ni en variables VITE_ (se expondría en el navegador).
 
-**3. Crear archivo .env (Opcional):**
-```bash
-# Copia .env.example a .env
-cp .env.example .env
-
-# Edita .env con tus credenciales
-VITE_SPOTIFY_CLIENT_ID=tu_client_id
-VITE_SPOTIFY_CLIENT_SECRET=tu_client_secret
+1. Crea .env en la raíz del proyecto (copia .env.example).
+2. En .env pon SOLO en el backend (sin prefijo VITE_):
+   SPOTIFY_CLIENT_ID=tu_client_id
+   SPOTIFY_CLIENT_SECRET=tu_client_secret
+3. Opcional en frontend (solo para indicar "Spotify habilitado"): VITE_SPOTIFY_CLIENT_ID=tu_client_id
+4. En la app: Configuración → pega solo el Client ID (público). No hay campo para el Secret.
+5. El token de Spotify se obtiene siempre desde el backend; el frontend nunca ve el Secret.
 ```
 
 ---

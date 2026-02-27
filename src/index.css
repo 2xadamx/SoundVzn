@@ -1,54 +1,228 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+
+:root,
+[data-theme="stellar-dark"] {
+  --font-primary: 'Inter', sans-serif;
+  --color-primary: #3b82f6;
+  --color-primary-rgb: 59, 130, 246;
+  --color-secondary: #8b5cf6;
+  --color-accent: #f43f5e;
+  --color-surface: #0f172a;
+  --bg-main: #010103;
+  --bg-sidebar: #010409;
+  --bg-card: #0f172a;
+  --glass-bg: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --glass-blur: blur(40px);
+  --text-primary: #f8fafc;
+  --text-secondary: rgba(248, 250, 252, 0.75);
+  --text-tertiary: rgba(148, 163, 184, 0.7);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --shadow-glow: 0 30px 80px rgba(15, 23, 42, 0.75);
+}
+
+[data-theme="radiant-light"] {
+  --font-primary: 'Inter', sans-serif;
+  --color-primary: #0ea5e9;
+  --color-primary-rgb: 14, 165, 233;
+  --color-secondary: #6366f1;
+  --color-accent: #ec4899;
+  --color-surface: #f1f5f9;
+  --bg-main: #f8fafc;
+  --bg-sidebar: #f1f5f9;
+  --bg-card: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-blur: blur(30px);
+  --text-primary: #0f172a;
+  --text-secondary: rgba(15, 23, 42, 0.6);
+  --text-tertiary: rgba(71, 85, 105, 0.6);
+  --border-subtle: rgba(15, 23, 42, 0.16);
+  --shadow-glow: 0 30px 60px rgba(14, 165, 233, 0.22);
+}
+
+/* Para Radiant Light necesitamos invertir el texto global a oscuro */
+.theme-light body {
+  color: #0f172a;
+}
+
+.theme-light * {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="vivid-nebula"] {
+  --font-primary: 'Inter', sans-serif;
+  --color-primary: #f43f5e;
+  --color-primary-rgb: 244, 63, 94;
+  --color-secondary: #d946ef;
+  --color-accent: #14b8a6;
+  --color-surface: #2e0219;
+  --bg-main: #17000d;
+  --bg-sidebar: #240015;
+  --bg-card: #3a0024;
+  --glass-bg: rgba(46, 2, 25, 0.7);
+  --glass-border: rgba(244, 63, 94, 0.15);
+  --glass-blur: blur(50px);
+  --text-primary: #f8fafc;
+  --text-secondary: rgba(224, 170, 255, 0.85);
+  --text-tertiary: rgba(196, 181, 253, 0.7);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --shadow-glow: 0 30px 90px rgba(244, 63, 94, 0.35);
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: var(--font-primary);
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+    min-height: 100vh;
+  }
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;
+@layer utilities {
+  .text-text-primary {
+    color: var(--text-primary);
+  }
+
+  .text-text-secondary {
+    color: var(--text-secondary);
+  }
+
+  .text-text-tertiary {
+    color: var(--text-tertiary);
+  }
+
+  .border-subtle {
+    border-color: var(--border-subtle);
+  }
+
+  .bg-app {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+  }
+
+  .surface-card {
+    background-color: var(--bg-card);
+    border-color: var(--border-subtle);
+  }
+
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.2), 0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1), 0 0 40px rgba(255, 255, 255, 0.05);
+  }
+
+  .glow-gradient {
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.15), 0 0 50px rgba(255, 255, 255, 0.1);
+  }
+
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .premium-border {
+    border: 1px solid transparent;
+    background-image: linear-gradient(var(--bg-main), var(--bg-main)), linear-gradient(to right, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+    background-origin: border-box;
+    background-clip: content-box, border-box;
+  }
 }
 
-.drag-region {
-  -webkit-app-region: drag;
+@layer components {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #ffffff;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #e4e4e7;
+  }
+
+  input[type='range'] {
+    @apply appearance-none bg-transparent cursor-pointer;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    @apply appearance-none w-3.5 h-3.5 bg-white rounded-full shadow-lg;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  input[type='range']::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+  }
+
+  input[type='range']::-webkit-slider-runnable-track {
+    @apply h-1 rounded-full;
+    background: #2e2e44;
+  }
 }
 
-.no-drag {
-  -webkit-app-region: no-drag;
+@keyframes glow-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.2), 0 0 40px rgba(255, 255, 255, 0.1);
+  }
+
+  50% {
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.3), 0 0 60px rgba(255, 255, 255, 0.2);
+  }
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+@keyframes wave {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
 }
 
-::-webkit-scrollbar-track {
-  background: #1a1a1a;
+.animate-glow {
+  animation: glow-pulse 3s ease-in-out infinite;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #2e2e2e;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #404040;
-}
-
-input[type='range']::-webkit-slider-runnable-track {
-  background: linear-gradient(
-    to right,
-    #0ea5e9 0%,
-    #0ea5e9 var(--progress, 0%),
-    #2e2e2e var(--progress, 0%),
-    #2e2e2e 100%
-  );
+.animate-wave {
+  animation: wave 2s ease-in-out infinite;
 }

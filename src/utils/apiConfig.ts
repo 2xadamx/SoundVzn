@@ -1,3 +1,7 @@
+/// <reference types="vite/client" />
+// URL del backend (Electron). En desarrollo: Vite corre en 5199, backend en 3000.
+export const BACKEND_URL = 'http://localhost:3000';
+
 export interface MusicAPIConfig {
   spotify: {
     clientId: string;
@@ -15,162 +19,91 @@ export interface MusicAPIConfig {
   };
 }
 
-const YOUTUBE_API_KEY = 'AIzaSyDBkGUjFKIcoVhP6LUHymVNEP5t4_qi8vo';
-
 const CONFIG: MusicAPIConfig = {
   spotify: {
-    clientId: import.meta.env.VITE_SPOTIFY_CLIENT_ID || localStorage.getItem('spotify_client_id') || '',
-    clientSecret: import.meta.env.VITE_SPOTIFY_CLIENT_SECRET || localStorage.getItem('spotify_client_secret') || '',
+    clientId: import.meta.env?.VITE_SPOTIFY_CLIENT_ID || '',
+    clientSecret: '', // Secret gestionado por el backend
     enabled: false,
   },
   lastfm: {
-    apiKey: import.meta.env.VITE_LASTFM_API_KEY || localStorage.getItem('lastfm_api_key') || '',
-    secret: import.meta.env.VITE_LASTFM_SECRET || localStorage.getItem('lastfm_secret') || '',
+    apiKey: import.meta.env?.VITE_LASTFM_API_KEY || '',
+    secret: '', // Secret gestionado por el backend
     enabled: false,
   },
   audd: {
-    apiKey: import.meta.env.VITE_AUDD_API_KEY || localStorage.getItem('audd_api_key') || '',
+    apiKey: '', // Key gestionada por el backend
     enabled: false,
   },
 };
 
-export function getYouTubeAPIKey(): string {
-  return YOUTUBE_API_KEY;
-}
+// Update enabled status based on environment variables (only public keys here)
+CONFIG.spotify.enabled = !!CONFIG.spotify.clientId;
+CONFIG.lastfm.enabled = !!CONFIG.lastfm.apiKey;
+// Audd.io no tiene key pública, así que se asume deshabilitado hasta confirmación del backend
+CONFIG.audd.enabled = false;
 
 let spotifyToken: string | null = null;
 let spotifyTokenExpiry: number = 0;
+
+function loadSavedConfig() {
+  try {
+    const raw = localStorage.getItem('soundvizion_api_config');
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved?.spotify?.clientId) CONFIG.spotify.clientId = saved.spotify.clientId;
+    if (saved?.lastfm?.apiKey) CONFIG.lastfm.apiKey = saved.lastfm.apiKey;
+    if (saved?.audd?.apiKey) CONFIG.audd.apiKey = saved.audd.apiKey;
+    // NUNCA cargar clientSecret ni secret desde localStorage (riesgo de exposición)
+    CONFIG.spotify.enabled = !!CONFIG.spotify.clientId;
+    CONFIG.lastfm.enabled = !!CONFIG.lastfm.apiKey;
+  } catch { }
+}
+loadSavedConfig();
+
+// En Vite SIEMPRE usar import.meta.env.VITE_* (nunca process.env en frontend)
+export function getYouTubeAPIKey(): string {
+  return import.meta.env?.VITE_YOUTUBE_API_KEY || '';
+}
 
 export async function getSpotifyToken(): Promise<string> {
   if (spotifyToken && Date.now() < spotifyTokenExpiry) {
     return spotifyToken;
   }
 
-  if (!CONFIG.spotify.clientId || !CONFIG.spotify.clientSecret) {
+  // Ahora solo necesitamos el Client ID para habilitar la API, el Secret está en el backend
+  if (!CONFIG.spotify.clientId) {
     CONFIG.spotify.enabled = false;
-    throw new Error('Spotify credentials not configured');
+    throw new Error('Spotify Client ID not configured');
   }
 
-  const credentials = btoa(`${CONFIG.spotify.clientId}:${CONFIG.spotify.clientSecret}`);
-
   try {
-    const response = await fetch('https://accounts.spotify.com/api/token', {
+    // FASE 1.2: Frontend Spotify (Usar endpoint backend correcto)
+    const response = await fetch(`${BACKEND_URL}/api/spotify-token`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: 'grant_type=client_credentials',
+      headers: { 'Content-Type': 'application/json' },
     });
 
     if (!response.ok) {
-      throw new Error('Failed to get Spotify token');
+      const errorData = await response.json();
+      throw new Error(`Failed to get Spotify token from backend: ${errorData.error || response.statusText}`);
     }
 
     const data = await response.json();
-    spotifyToken = data.access_token;
+    spotifyToken = data.access_token || '';
+    // Renew 1 minute before expiry
     spotifyTokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
     CONFIG.spotify.enabled = true;
 
-    return spotifyToken;
+    return spotifyToken || '';
   } catch (error) {
     CONFIG.spotify.enabled = false;
+    console.error('Error in getSpotifyToken (frontend):', error);
     throw error;
   }
-}
-
-export async function testAPIConnections(): Promise<{
-  spotify: boolean;
-  lastfm: boolean;
-  audd: boolean;
-  itunes: boolean;
-  musicbrainz: boolean;
-  deezer: boolean;
-}> {
-  const results = {
-    spotify: false,
-    lastfm: false,
-    audd: false,
-    itunes: true,
-    musicbrainz: true,
-    deezer: true,
-  };
-
-  try {
-    await getSpotifyToken();
-    results.spotify = true;
-  } catch {
-    results.spotify = false;
-  }
-
-  if (CONFIG.lastfm.apiKey) {
-    try {
-      const response = await fetch(
-        `https://ws.audioscrobbler.com/2.0/?method=chart.gettoptracks&api_key=${CONFIG.lastfm.apiKey}&format=json&limit=1`
-      );
-      results.lastfm = response.ok;
-    } catch {
-      results.lastfm = false;
-    }
-  }
-
-  if (CONFIG.audd.apiKey) {
-    try {
-      const response = await fetch(
-        `https://api.audd.io/`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `api_token=${CONFIG.audd.apiKey}&return=timecode`,
-        }
-      );
-      results.audd = response.ok;
-    } catch {
-      results.audd = false;
-    }
-  }
-
-  return results;
 }
 
 export function getAPIConfig(): MusicAPIConfig {
   return CONFIG;
 }
 
-export function updateAPIConfig(updates: Partial<MusicAPIConfig>): void {
-  if (updates.spotify) {
-    Object.assign(CONFIG.spotify, updates.spotify);
-    if (updates.spotify.clientId) {
-      localStorage.setItem('spotify_client_id', updates.spotify.clientId);
-    }
-    if (updates.spotify.clientSecret) {
-      localStorage.setItem('spotify_client_secret', updates.spotify.clientSecret);
-    }
-  }
-  if (updates.lastfm) {
-    Object.assign(CONFIG.lastfm, updates.lastfm);
-    if (updates.lastfm.apiKey) {
-      localStorage.setItem('lastfm_api_key', updates.lastfm.apiKey);
-    }
-  }
-  if (updates.audd) {
-    Object.assign(CONFIG.audd, updates.audd);
-    if (updates.audd.apiKey) {
-      localStorage.setItem('audd_api_key', updates.audd.apiKey);
-    }
-  }
-
-  localStorage.setItem('soundvzn_api_config', JSON.stringify(CONFIG));
-}
-
-export function loadAPIConfig(): void {
-  const saved = localStorage.getItem('soundvzn_api_config');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      Object.assign(CONFIG, parsed);
-    } catch (e) {
-      console.error('Failed to load API config:', e);
-    }
-  }
-}
+export default CONFIG;

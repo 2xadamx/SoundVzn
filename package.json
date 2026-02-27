@@ -1,43 +1,82 @@
 {
   "name": "soundvzn",
-  "version": "0.1.0",
+  "version": "1.0.0-beta",
   "description": "Reproductor de audio profesional de alta fidelidad",
   "main": "dist-electron/main.js",
   "type": "module",
   "author": "SoundVzn Team",
   "license": "MIT",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "dev": "vite --port 5199",
+    "dev:win": "node ./node_modules/vite/bin/vite.js dev --port 5199",
+    "dev:full": "concurrently \"npm run dev\" \"npm run electron:start\"",
+    "build": "vite build",
+    "build:win": "vite build",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on tcp:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder"
+    "electron:dev": "echo Use: npm run dev:full (opens both)",
+    "electron:start": "wait-on tcp:5199 && electron .",
+    "electron:build": "vite build && npx electron-builder --win --mac",
+    "electron:build:win": "vite build && npx electron-builder --win",
+    "electron:build:mac": "vite build && npx electron-builder --mac",
+    "electron:build:linux": "vite build && npx electron-builder --linux",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.4",
+    "@stripe/react-stripe-js": "^5.6.0",
+    "@stripe/stripe-js": "^8.8.0",
+    "@tsparticles/react": "^3.0.0",
+    "@tsparticles/slim": "^3.9.1",
+    "axios": "^1.13.5",
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^12.6.2",
+    "clsx": "^2.1.1",
+    "date-fns": "^2.30.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "framer-motion": "^10.18.0",
+    "howler": "^2.2.3",
+    "idb": "^7.1.1",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.564.0",
+    "music-metadata": "^8.1.4",
+    "nodemailer": "^8.0.1",
+    "play-dl": "^1.9.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "framer-motion": "^10.16.4",
-    "zustand": "^4.4.6",
-    "music-metadata": "^8.1.4",
-    "howler": "^2.2.3",
-    "sql.js": "^1.8.0",
-    "date-fns": "^2.30.0",
-    "idb": "^7.1.1"
+    "stripe": "^20.3.1",
+    "tailwind-merge": "^3.4.0",
+    "youtube-dl-exec": "^3.1.1",
+    "yt-search": "^2.13.1",
+    "zustand": "^4.4.6"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^25.2.3",
+    "@types/nodemailer": "^7.0.11",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
+    "@types/yt-search": "^2.10.3",
     "@vitejs/plugin-react": "^4.2.1",
-    "electron": "^28.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "autoprefixer": "^10.4.16",
+    "axios-extra": "^0.0.8",
+    "concurrently": "^8.2.2",
+    "electron": "^34.0.0",
     "electron-builder": "^24.9.1",
+    "jsdom": "^28.1.0",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
     "typescript": "^5.3.3",
     "vite": "^5.0.8",
     "vite-plugin-electron": "^0.28.0",
     "vite-plugin-electron-renderer": "^0.14.5",
-    "tailwindcss": "^3.3.6",
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
-    "concurrently": "^8.2.2",
+    "vitest": "^4.0.18",
     "wait-on": "^7.2.0"
   },
   "build": {
@@ -54,24 +93,28 @@
     "compression": "maximum",
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
+        "nsis"
       ],
-      "icon": "resources/icon.ico"
+      "icon": "public/logo-app.png",
+      "forceCodeSigning": false,
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SoundVzn",
+      "artifactName": "SoundVzn-Setup-v${version}.${ext}",
       "deleteAppDataOnUninstall": true
     },
     "mac": {
-      "target": ["dmg", "pkg"],
-      "icon": "resources/icon.icns",
+      "target": [
+        "dmg",
+        "pkg"
+      ],
+      "icon": "public/logo-app.png",
       "category": "public.app-category.music"
     }
   }

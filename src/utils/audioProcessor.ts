@@ -112,6 +112,21 @@ export function getAudioProcessor(): AudioProcessor | null {
   return audioProcessor;
 }
 
+export async function destroyAudioProcessor(): Promise<void> {
+  if (!audioProcessor) return;
+  try { audioProcessor.sourceNode?.disconnect(); } catch { }
+  try { audioProcessor.eqNodes.forEach((n) => n.disconnect()); } catch { }
+  try { audioProcessor.compressorNode.disconnect(); } catch { }
+  try { audioProcessor.gainNode.disconnect(); } catch { }
+  try { audioProcessor.analyserNode.disconnect(); } catch { }
+  try {
+    if (audioProcessor.context.state !== 'closed') {
+      await audioProcessor.context.close();
+    }
+  } catch { }
+  audioProcessor = null;
+}
+
 export function setMasterGain(gain: number): void {
   if (!audioProcessor) return;
   audioProcessor.gainNode.gain.value = gain;

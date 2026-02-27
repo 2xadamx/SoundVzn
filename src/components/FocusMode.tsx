@@ -14,7 +14,7 @@ const ambientSounds = [
 export const FocusMode: React.FC = () => {
   const [selectedAmbient, setSelectedAmbient] = useState<string | null>(null);
   const [ambientVolume, setAmbientVolume] = useState(30);
-  const { volume } = usePlayerStore();
+  const volume = usePlayerStore((state) => state.volume);
 
   return (
     <div className="p-8">

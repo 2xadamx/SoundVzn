@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SoundVizion – High-Fidelity Audio Player</title>
+    <meta name="description"
+        content="SoundVizion is a premium high-fidelity audio player and organizer for Windows and Mac." />
+    <link rel="icon" href="./assets/logo-app.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+
+    <!-- NAV -->
+    <nav id="navbar">
+        <div class="nav-inner">
+            <a href="index.html" class="nav-logo">
+                <img src="./assets/logo-app.png" alt="SoundVizion" class="logo-icon" />
+                <span>SoundVizion</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">Características</a></li>
+                <li><a href="#download">Descargar</a></li>
+                <li><a href="mailto:SoundVzn.app@outlook.es">Contacto</a></li>
+            </ul>
+            <a href="#download" class="nav-cta">Descargar Gratis</a>
+            <button class="hamburger" id="hamburger" aria-label="Menu">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+        <div class="mobile-menu" id="mobile-menu">
+            <a href="#features">Características</a>
+            <a href="#download">Descargar</a>
+            <a href="mailto:SoundVzn.app@outlook.es">Contacto</a>
+        </div>
+    </nav>
+
+    <!-- HERO -->
+    <header id="hero">
+        <div class="hero-content">
+            <div class="hero-badge">v1.0.0-beta</div>
+            <img src="./assets/banner-splash.jpeg" alt="Svzn" class="hero-logo-banner" />
+            <h1 class="hero-title">El estándar en reproducción de audio.</h1>
+            <p class="hero-sub">Diseño minimalista, streaming de YouTube sin anuncios y soporte Hi-Res. El ecosistema
+                musical nativo para Windows y macOS.</p>
+            <div class="hero-ctas">
+                <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.0-beta/SoundVizion-Portable-v1.0.0-beta.zip"
+                    class="btn-primary">Descargar Versión Beta</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- FEATURES -->
+    <section id="features" class="section">
+        <div class="container border-top">
+            <div class="section-intro">
+                <h2>Ingeniería de sonido, simplificada.</h2>
+                <p>Una interfaz sin distracciones centrada exclusivamente en la calidad de tu biblioteca musical.</p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-item">
+                    <h3>Hi-Res Engine</h3>
+                    <p>Motor de audio optimizado para formatos sin pérdida. Escucha cada matiz sin compresión
+                        intermedia.</p>
+                </div>
+                <div class="feature-item">
+                    <h3>Hologram Visualizer</h3>
+                    <p>Un ecualizador paramétrico analítico que reacciona limpiamente a las frecuencias reales del
+                        espectro en tiempo real.</p>
+                </div>
+                <div class="feature-item">
+                    <h3>Streaming Nativo</h3>
+                    <p>Integración directa con el motor de YouTube para reproducir cualquier canción al instante sin
+                        anuncios.</p>
+                </div>
+                <div class="feature-item">
+                    <h3>Gestión Local</h3>
+                    <p>Soporte completo para bibliotecas off-grid y descargas. Mantén el control de tus propios
+                        archivos.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- DOWNLOAD -->
+    <section id="download" class="section bg-subtle">
+        <div class="container border-top">
+            <div class="section-intro text-center">
+                <h2>Empieza a escuchar</h2>
+                <p>Aplicaciones nativas optimizadas para cada plataforma.</p>
+            </div>
+
+            <div class="download-cards">
+                <div class="download-card">
+                    <h4>Windows</h4>
+                    <p class="req">Windows 10/11 (64-bit)</p>
+                    <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.0-beta/SoundVizion-Portable-v1.0.0-beta.zip"
+                        class="btn-outline">Descargar para Windows</a>
+                    <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.0-beta/SoundVizion-Portable-v1.0.0-beta.zip"
+                        class="link-small">Versión Portable (.zip)</a>
+                </div>
+
+                <div class="download-card">
+                    <h4>macOS</h4>
+                    <p class="req">macOS 12+ (Apple Silicon & Intel)</p>
+                    <a href="#" class="btn-outline">Descargar para Mac</a>
+                    <a href="#" class="link-small">Archivo binario (.zip)</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <div class="container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <img src="./assets/logo-app.png" alt="SoundVizion Logo" class="footer-icon" />
+                    <span>SoundVizion</span>
+                </div>
+                <div class="footer-links">
+                    <a href="mailto:SoundVzn.app@outlook.es">Soporte</a>
+                    <a href="privacy.html">Política de Privacidad</a>
+                    <a href="terms.html">Términos de Servicio</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2026 SoundVzn. Todos los derechos reservados.</p>
+                <p class="contact-email">Contacto: <a href="mailto:SoundVzn.app@outlook.es">SoundVzn.app@outlook.es</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="./app.js"></script>
+</body>
+
+</html>

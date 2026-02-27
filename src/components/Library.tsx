@@ -1,15 +1,71 @@
-import React, { useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useLibraryStore } from '@store/library';
 import { usePlayerStore } from '@store/player';
+import { shallow } from 'zustand/shallow';
 import { extractMetadata } from '@utils/metadata';
 import { addTrack, getAllTracks } from '@utils/database';
-import { Track } from '@types/index';
+import { Track } from '../types';
 
 export const Library: React.FC = () => {
-  const { tracks, isLoading, searchQuery, setSearchQuery, getFilteredTracks, setTracks, setLoading } = useLibraryStore();
-  const { setCurrentTrack, setQueue, setIsPlaying } = usePlayerStore();
+  const { tracks, isLoading, searchQuery, setSearchQuery, getFilteredTracks, setTracks, setLoading } = useLibraryStore(
+    (state) => ({
+      tracks: state.tracks,
+      isLoading: state.isLoading,
+      searchQuery: state.searchQuery,
+      setSearchQuery: state.setSearchQuery,
+      getFilteredTracks: state.getFilteredTracks,
+      setTracks: state.setTracks,
+      setLoading: state.setLoading,
+    }),
+    shallow
+  );
+  const { setCurrentTrack, setQueue, setIsPlaying } = usePlayerStore(
+    (state) => ({
+      setCurrentTrack: state.setCurrentTrack,
+      setQueue: state.setQueue,
+      setIsPlaying: state.setIsPlaying,
+    }),
+    shallow
+  );
   const filteredTracks = getFilteredTracks();
+  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(400);
+
+  const ROW_HEIGHT = 56;
+  const OVERSCAN = 6;
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const update = () => setViewportHeight(el.clientHeight || 400);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const { visibleTracks, offsetY, totalHeight } = useMemo(() => {
+    const total = filteredTracks.length * ROW_HEIGHT;
+    if (filteredTracks.length === 0) {
+      return { visibleTracks: [], offsetY: 0, totalHeight: 0 };
+    }
+
+    const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+    const endIndex = Math.min(
+      filteredTracks.length - 1,
+      Math.floor((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN
+    );
+    return {
+      visibleTracks: filteredTracks.slice(startIndex, endIndex + 1).map((track, idx) => ({
+        track,
+        index: startIndex + idx,
+      })),
+      offsetY: startIndex * ROW_HEIGHT,
+      totalHeight: total,
+    };
+  }, [filteredTracks, scrollTop, viewportHeight]);
 
   useEffect(() => {
     const loadTracks = async () => {
@@ -54,7 +110,8 @@ export const Library: React.FC = () => {
             year: metadata.year,
             genre: metadata.genre,
             artwork: metadata.artwork,
-            addedDate: new Date(),
+            favorite: false,
+            dateAdded: new Date().toISOString(),
             playCount: 0,
             lastPlayed: undefined
           };
@@ -151,50 +208,51 @@ export const Library: React.FC = () => {
           </div>
         ) : (
           <div className="p-6">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-sm text-gray-400 border-b border-dark-700">
-                  <th className="pb-3 pl-4">#</th>
-                  <th className="pb-3">Título</th>
-                  <th className="pb-3">Artista</th>
-                  <th className="pb-3">Álbum</th>
-                  <th className="pb-3">Duración</th>
-                  <th className="pb-3">Formato</th>
-                </tr>
-              </thead>
-              <tbody>
-                <AnimatePresence>
-                  {filteredTracks.map((track, index) => (
-                    <motion.tr
-                      key={track.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
-                      transition={{ delay: index * 0.02 }}
-                      onClick={() => handlePlayTrack(track)}
-                      className="border-b border-dark-800 hover:bg-dark-800 cursor-pointer transition-colors group"
-                    >
-                      <td className="py-3 pl-4 text-gray-500 group-hover:text-primary-500">
-                        {index + 1}
-                      </td>
-                      <td className="py-3">
-                        <div className="font-semibold text-white">{track.title}</div>
-                      </td>
-                      <td className="py-3 text-gray-400">{track.artist}</td>
-                      <td className="py-3 text-gray-400">{track.album}</td>
-                      <td className="py-3 text-gray-400">
-                        {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
-                      </td>
-                      <td className="py-3">
-                        <span className="px-2 py-1 bg-dark-700 rounded text-xs font-mono text-primary-400">
-                          {track.format?.toUpperCase() || 'MP3'}
-                        </span>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </AnimatePresence>
-              </tbody>
-            </table>
+            <div className="w-full">
+              <div className="text-left text-sm text-gray-400 border-b border-dark-700 pb-3 grid grid-cols-[48px_2fr_1.4fr_1.4fr_110px_90px]">
+                <div className="pl-4">#</div>
+                <div>Título</div>
+                <div>Artista</div>
+                <div>Álbum</div>
+                <div>Duración</div>
+                <div>Formato</div>
+              </div>
+              <div
+                ref={listRef}
+                className="relative h-[60vh] overflow-auto"
+                onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+              >
+                <div style={{ height: totalHeight, position: 'relative' }}>
+                  <div style={{ transform: `translateY(${offsetY}px)` }}>
+                    {visibleTracks.map(({ track, index }) => (
+                      <motion.div
+                        key={track.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={() => handlePlayTrack(track)}
+                        className="grid grid-cols-[48px_2fr_1.4fr_1.4fr_110px_90px] items-center border-b border-dark-800 hover:bg-dark-800 cursor-pointer transition-colors group h-14"
+                      >
+                        <div className="pl-4 text-gray-500 group-hover:text-primary-500">
+                          {index + 1}
+                        </div>
+                        <div className="font-semibold text-white truncate pr-3">{track.title}</div>
+                        <div className="text-gray-400 truncate pr-3">{track.artist}</div>
+                        <div className="text-gray-400 truncate pr-3">{track.album}</div>
+                        <div className="text-gray-400">
+                          {Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, '0')}
+                        </div>
+                        <div>
+                          <span className="px-2 py-1 bg-dark-700 rounded text-xs font-mono text-primary-400">
+                            {track.format?.toUpperCase() || 'MP3'}
+                          </span>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

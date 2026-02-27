@@ -1,15 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import { usePlayerStore } from '@store/player';
+import { shallow } from 'zustand/shallow';
 
 interface MiniPlayerProps {
   onClose: () => void;
 }
 
 export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onClose }) => {
-  const { currentTrack, isPlaying, setIsPlaying, playNext, playPrevious } = usePlayerStore();
-  const [position, setPosition] = useState({ x: window.innerWidth - 320, y: 100 });
-  const [isDragging, setIsDragging] = useState(false);
+  const { currentTrack, isPlaying, setIsPlaying, playNext, playPrevious } = usePlayerStore(
+    (state) => ({
+      currentTrack: state.currentTrack,
+      isPlaying: state.isPlaying,
+      setIsPlaying: state.setIsPlaying,
+      playNext: state.playNext,
+      playPrevious: state.playPrevious,
+    }),
+    shallow
+  );
+  const [position] = useState({ x: window.innerWidth - 320, y: 100 });
+  const [, setIsDragging] = useState(false);
 
   if (!currentTrack) return null;
 

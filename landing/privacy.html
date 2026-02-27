@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Política de Privacidad – SoundVizion</title>
+    <link rel="icon" href="./assets/logo-app.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+    <nav id="navbar">
+        <div class="nav-inner">
+            <a href="index.html" class="nav-logo">
+                <img src="./assets/logo-app.png" alt="SoundVizion" class="logo-icon" />
+                <span>SoundVizion</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="index.html">Inicio</a></li>
+                <li><a href="mailto:SoundVzn.app@outlook.es">Contacto</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="page-header">
+        <div class="container">
+            <h1>Política de Privacidad</h1>
+            <p class="hero-sub" style="margin:0; text-align:left;">Última actualización: Febrero 2026</p>
+        </div>
+    </header>
+
+    <main class="container page-content">
+        <h2>1. Recopilación de Información</h2>
+        <p>SoundVizion opera principalmente de manera local. Recopilamos información mínima de cuenta (correo
+            electrónico y credenciales encriptadas vía bcrypt) estrictamente necesaria para la sincronización de tu
+            biblioteca y acceso a funciones de streaming y perfiles.</p>
+
+        <h2>2. Enrutamiento y YouTube</h2>
+        <p>Cuando utilizas la función de búsqueda o streaming nativo, SoundVizion se conecta a los servicios de YouTube
+            a través de una API no oficial o `yt-dlp`. Ninguna información de tu historial de reproducción es compartida
+            con terceros para propósitos publicitarios.</p>
+
+        <h2>3. Almacenamiento Local (SQLite)</h2>
+        <p>Todos los datos de reproducción en caché, tu historial, portadas y configuraciones visuales (Hologram
+            Visualizer) se guardan localmente en tu dispositivo a través de una base de datos SQLite segura, dándote
+            control absoluto.</p>
+
+        <h2>4. Seguridad y Autenticación</h2>
+        <p>Tu sesión se protege mediante tokens JWT. Jamás almacenamos tu contraseña en texto plano, y aplicamos Rate
+            Limiting severo a los intentos de inicio de sesión para evitar accesos no autorizados.</p>
+
+        <h2>5. Contacto</h2>
+        <p>Si tienes cualquier duda relacionada con la privacidad de tus datos, puedes enviarnos un correo electrónico
+            a: <a href="mailto:SoundVzn.app@outlook.es">SoundVzn.app@outlook.es</a>.</p>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <img src="./assets/logo-app.png" alt="SoundVizion Logo" class="footer-icon" />
+                    <span>SoundVizion</span>
+                </div>
+                <div class="footer-links">
+                    <a href="index.html">Inicio</a>
+                    <a href="terms.html">Términos de Servicio</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2026 SoundVzn. Todos los derechos reservados.</p>
+                <p class="contact-email">Contacto: <a href="mailto:SoundVzn.app@outlook.es">SoundVzn.app@outlook.es</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

@@ -1,0 +1,13 @@
+import express from 'express';
+import axios from 'axios';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import ytdl from 'ytdl-core';
+import ytsr from 'ytsr';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Backend: solo variables SIN prefijo VITE_ (VITE_ es solo para frontend en Vite)
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// ... rest of file (I will use replace_file_content for precision)

@@ -1,262 +1,619 @@
-import initSqlJs, { Database } from 'sql.js';
+interface TrackDB {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  year?: number;
+  genre?: string;
+  duration: number;
+  filePath: string;
+  format?: string;
+  bitrate?: number;
+  sampleRate?: number;
+  bitDepth?: number;
+  lossless?: boolean;
+  artwork?: string;
+  favorite: boolean;
+  addedDate: number;
+  lastPlayed?: number;
+  playCount: number;
+}
 
-let db: Database | null = null;
+interface PlaylistDB {
+  id: string;
+  name: string;
+  description?: string;
+  createdDate: number;
+  updatedDate: number;
+  artwork?: string;
+  trackIds: string[];
+}
 
-export async function initDatabase(): Promise<void> {
-  if (db) return;
+const TRACKS_KEY = 'soundvzn_tracks';
+const PLAYLISTS_KEY = 'soundvzn_playlists';
+const FOLLOWED_PLAYLISTS_KEY = 'soundvzn_followed_playlists';
+const LIKED_ARTISTS_KEY = 'soundvzn_liked_artists';
+const PROFILE_KEY = 'soundvzn_profile';
+const AUTH_TOKEN_KEY = 'google_token';
 
-  const SQL = await initSqlJs({
-    locateFile: (file) => `https://sql.js.org/dist/${file}`,
-  });
-
-  const savedData = localStorage.getItem('soundvzn_database');
-  
-  if (savedData) {
-    const buffer = new Uint8Array(JSON.parse(savedData));
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-    createTables();
+// Helper to get namespaced key without triggering expensive lookups
+function getNsKey(baseKey: string): string {
+  try {
+    const profileStr = localStorage.getItem(PROFILE_KEY);
+    let userId = 'guest';
+    if (profileStr) {
+      const profile = JSON.parse(profileStr);
+      userId = profile.email || 'guest';
+    }
+    const safeId = userId.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    return `${safeId}_${baseKey}`;
+  } catch {
+    return `guest_${baseKey}`;
   }
 }
 
-function createTables(): void {
-  if (!db) return;
+interface UserProfile {
+  name: string;
+  email: string;
+  bio?: string;
+  avatar?: string;
+  banner?: string;
+  tier: 'standard' | 'pro';
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  stats: {
+    songs: number;
+    hours: number;
+    favorites: number;
+    playlists: number;
+  };
+}
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS tracks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      artist TEXT NOT NULL,
-      album TEXT,
-      year INTEGER,
-      genre TEXT,
-      duration REAL,
-      filePath TEXT UNIQUE NOT NULL,
-      format TEXT,
-      bitrate INTEGER,
-      sampleRate INTEGER,
-      bitDepth INTEGER,
-      lossless INTEGER,
-      artwork TEXT,
-      addedDate INTEGER,
-      lastPlayed INTEGER,
-      playCount INTEGER DEFAULT 0
-    )
-  `);
+export const TIER_LIMITS = {
+  standard: {
+    playlists: 9999,
+    favorites: 9999,
+    storageGB: -1
+  },
+  pro: {
+    playlists: 9999,
+    favorites: 9999,
+    storageGB: -1
+  }
+};
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS playlists (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      createdDate INTEGER,
-      updatedDate INTEGER,
-      artwork TEXT
-    )
-  `);
+let isDbInitialized = false;
+let dbInitializationPromise: Promise<void> | null = null;
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS playlist_tracks (
-      playlistId TEXT,
-      trackId TEXT,
-      position INTEGER,
-      addedDate INTEGER,
-      FOREIGN KEY (playlistId) REFERENCES playlists(id) ON DELETE CASCADE,
-      FOREIGN KEY (trackId) REFERENCES tracks(id) ON DELETE CASCADE,
-      PRIMARY KEY (playlistId, trackId)
-    )
-  `);
+export async function clearAuthSession(): Promise<void> {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(PROFILE_KEY);
+  localStorage.removeItem('auth_access_token');
+  localStorage.removeItem('auth_refresh_token');
+  localStorage.removeItem('user_profile');
 
-  db.run(`
-    CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist)
-  `);
+  if ((window as any).electron?.saveData) {
+    await (window as any).electron.saveData(AUTH_TOKEN_KEY, null);
+    await (window as any).electron.saveData(PROFILE_KEY, null);
+    await (window as any).electron.saveData('auth_access_token', null);
+    await (window as any).electron.saveData('auth_refresh_token', null);
+    await (window as any).electron.saveData('user_profile', null);
+  }
+}
 
-  db.run(`
-    CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album)
-  `);
+export async function initDatabase(): Promise<void> {
+  if (isDbInitialized) return;
+  if (dbInitializationPromise) return dbInitializationPromise;
 
-  db.run(`
-    CREATE INDEX IF NOT EXISTS idx_tracks_genre ON tracks(genre)
-  `);
+  dbInitializationPromise = (async () => {
+    console.log('[DB] Starting initialization...');
+    // Try to load from filesystem first (global keys for settings, namespaced for data)
+    const fsToken = await (window as any).electron?.loadData(AUTH_TOKEN_KEY);
+    if (fsToken) localStorage.setItem(AUTH_TOKEN_KEY, fsToken);
 
-  saveDatabase();
+    const fsProfile = await (window as any).electron?.loadData(PROFILE_KEY);
+    if (fsProfile) localStorage.setItem(PROFILE_KEY, JSON.stringify(fsProfile));
+
+    // If no profile, set default immediately so getNsKey works
+    if (!localStorage.getItem(PROFILE_KEY)) {
+      const defaultProfile = {
+        name: "Usuario",
+        email: "",
+        tier: "standard",
+        bio: "Explorador de sonido.",
+      };
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(defaultProfile));
+    }
+
+    // Load full namespaced profile if available
+    const nsProfileKey = getNsKey(PROFILE_KEY);
+    const fsNsProfile = await (window as any).electron?.loadData(nsProfileKey);
+    if (fsNsProfile) {
+      localStorage.setItem(nsProfileKey, JSON.stringify(fsNsProfile));
+      // Sync namespaced data back to global session for easy access
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(fsNsProfile));
+    }
+
+    // Clear current namespace items from localStorage to prevent stale data
+    // before re-loading the new ones
+    console.log(`[DB] Loading data for namespace: ${getNsKey('')}`);
+
+    // Now load namespaced data
+    const tKey = getNsKey(TRACKS_KEY);
+    const pKey = getNsKey(PLAYLISTS_KEY);
+
+    const fsTracks = await (window as any).electron?.loadData(tKey);
+    const fsPlaylists = await (window as any).electron?.loadData(pKey);
+
+    if (fsTracks) localStorage.setItem(tKey, JSON.stringify(fsTracks));
+    if (fsPlaylists) localStorage.setItem(pKey, JSON.stringify(fsPlaylists));
+
+    if (!localStorage.getItem(tKey)) {
+      localStorage.setItem(tKey, JSON.stringify([]));
+    }
+
+    if (!localStorage.getItem(pKey) || JSON.parse(localStorage.getItem(pKey) || '[]').length === 0) {
+      const demoPlaylists: PlaylistDB[] = [
+        {
+          id: 'pl_demo_1',
+          name: 'Mis Favoritos',
+          description: 'Tu colección personal.',
+          createdDate: Date.now(),
+          updatedDate: Date.now(),
+          trackIds: []
+        }
+      ];
+      localStorage.setItem(pKey, JSON.stringify(demoPlaylists));
+      await syncToFs(pKey, demoPlaylists);
+    }
+
+    // Data Migration: If we are logged in but have no tracks, try to migrate from guest
+    const finalProfile = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+    if (finalProfile.email && finalProfile.email !== 'guest') {
+      const userTKey = getNsKey(TRACKS_KEY);
+      const userTracks = JSON.parse(localStorage.getItem(userTKey) || '[]');
+
+      if (userTracks.length === 0) {
+        console.log('[DB] New user detected, attempting migration from guest...');
+        const guestTKey = 'guest_tracks';
+        const guestTracks = JSON.parse(localStorage.getItem(guestTKey) || '[]');
+
+        if (guestTracks.length > 0) {
+          console.log(`[DB] Migrating ${guestTracks.length} tracks from guest to ${finalProfile.email}`);
+          localStorage.setItem(userTKey, JSON.stringify(guestTracks));
+          await syncToFs(userTKey, guestTracks);
+        }
+      }
+    }
+
+    // Final sync to ensure all defaults are on FS
+    await syncToFs(PROFILE_KEY, finalProfile);
+
+    isDbInitialized = true;
+    console.log('[DB] Initialization complete.');
+  })();
+
+  return dbInitializationPromise;
+}
+
+
+
+async function syncToFs(key: string, data: any) {
+  try {
+    console.log(`[DB] Syncing to FS: ${key}`, Array.isArray(data) ? `(Array[${data.length}])` : '(Object)');
+    if ((window as any).electron?.saveData) {
+      await (window as any).electron.saveData(key, data);
+      console.log(`[DB] Sync to FS SUCCESS: ${key}`);
+    } else {
+      console.warn(`[DB] Electron bridge not available for sync: ${key}`);
+    }
+  } catch (err) {
+    console.error(`[DB] Sync to FS failed for ${key}:`, err);
+  }
 }
 
 export function saveDatabase(): void {
-  if (!db) return;
-  const data = db.export();
-  localStorage.setItem('soundvzn_database', JSON.stringify(Array.from(data)));
 }
 
 export async function addTrack(track: any): Promise<void> {
-  if (!db) await initDatabase();
-  if (!db) return;
-
   try {
-    db.run(
-      `INSERT OR REPLACE INTO tracks 
-       (id, title, artist, album, year, genre, duration, filePath, format, bitrate, 
-        sampleRate, bitDepth, lossless, artwork, addedDate, playCount)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        track.id,
-        track.title,
-        track.artist,
-        track.album,
-        track.year,
-        track.genre,
-        track.duration,
-        track.filePath,
-        track.format,
-        track.bitrate,
-        track.sampleRate,
-        track.bitDepth,
-        track.lossless ? 1 : 0,
-        track.artwork,
-        Date.now(),
-        0,
-      ]
-    );
-    saveDatabase();
+    const key = getNsKey(TRACKS_KEY);
+    const tracks: TrackDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+
+    const existingIndex = tracks.findIndex(t => t.id === track.id);
+
+    const trackDB: TrackDB = {
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      year: track.year,
+      genre: track.genre,
+      duration: track.duration,
+      filePath: track.filePath,
+      format: track.format,
+      bitrate: track.bitrate,
+      sampleRate: track.sampleRate,
+      bitDepth: track.bitDepth,
+      lossless: track.lossless,
+      artwork: track.artwork,
+      favorite: track.favorite || false,
+      addedDate: track.addedDate || Date.now(),
+      lastPlayed: track.lastPlayed,
+      playCount: track.playCount || 0,
+    };
+
+    if (existingIndex >= 0) {
+      tracks[existingIndex] = trackDB;
+    } else {
+      tracks.push(trackDB);
+    }
+
+    localStorage.setItem(key, JSON.stringify(tracks));
+    console.log(`[DB] Track added/updated in localStorage: ${track.id} (${key})`);
+    await syncToFs(key, tracks);
   } catch (error) {
     console.error('Error adding track:', error);
   }
 }
 
 export async function getAllTracks(): Promise<any[]> {
-  if (!db) await initDatabase();
-  if (!db) return [];
-
-  const result = db.exec('SELECT * FROM tracks ORDER BY addedDate DESC');
-  if (result.length === 0) return [];
-
-  const columns = result[0].columns;
-  const tracks = result[0].values.map((row) => {
-    const track: any = {};
-    columns.forEach((col, idx) => {
-      track[col] = row[idx];
-    });
-    track.lossless = Boolean(track.lossless);
-    track.addedDate = new Date(track.addedDate);
-    track.lastPlayed = track.lastPlayed ? new Date(track.lastPlayed) : undefined;
-    return track;
-  });
-
-  return tracks;
+  try {
+    const key = getNsKey(TRACKS_KEY);
+    const tracks = JSON.parse(localStorage.getItem(key) || '[]');
+    return tracks.sort((a: TrackDB, b: TrackDB) => b.addedDate - a.addedDate);
+  } catch {
+    return [];
+  }
 }
 
 export async function searchTracks(query: string): Promise<any[]> {
-  if (!db) await initDatabase();
-  if (!db) return [];
+  try {
+    const key = getNsKey(TRACKS_KEY);
+    const tracks: TrackDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const lowerQuery = query.toLowerCase();
 
-  const searchQuery = `%${query.toLowerCase()}%`;
-  const result = db.exec(
-    `SELECT * FROM tracks 
-     WHERE LOWER(title) LIKE ? OR LOWER(artist) LIKE ? OR LOWER(album) LIKE ?
-     ORDER BY playCount DESC, addedDate DESC
-     LIMIT 50`,
-    [searchQuery, searchQuery, searchQuery]
-  );
-
-  if (result.length === 0) return [];
-
-  const columns = result[0].columns;
-  return result[0].values.map((row) => {
-    const track: any = {};
-    columns.forEach((col, idx) => {
-      track[col] = row[idx];
-    });
-    track.lossless = Boolean(track.lossless);
-    track.addedDate = new Date(track.addedDate);
-    return track;
-  });
+    return tracks
+      .filter(track =>
+        track.title.toLowerCase().includes(lowerQuery) ||
+        track.artist.toLowerCase().includes(lowerQuery) ||
+        (track.album && track.album.toLowerCase().includes(lowerQuery))
+      )
+      .sort((a, b) => b.playCount - a.playCount)
+      .slice(0, 50);
+  } catch {
+    return [];
+  }
 }
 
 export async function updatePlayCount(trackId: string): Promise<void> {
-  if (!db) return;
+  try {
+    const key = getNsKey(TRACKS_KEY);
+    const tracks: TrackDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const track = tracks.find(t => t.id === trackId);
 
-  db.run(
-    'UPDATE tracks SET playCount = playCount + 1, lastPlayed = ? WHERE id = ?',
-    [Date.now(), trackId]
-  );
-  saveDatabase();
+    if (track) {
+      track.playCount = (track.playCount || 0) + 1;
+      track.lastPlayed = Date.now();
+
+      const playedTracks = tracks
+        .filter(t => t.lastPlayed)
+        .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
+
+      if (playedTracks.length > 200) {
+        const toClean = playedTracks.slice(200);
+        toClean.forEach(t => {
+          const original = tracks.find(ot => ot.id === t.id);
+          if (original) delete original.lastPlayed;
+        });
+      }
+
+      localStorage.setItem(key, JSON.stringify(tracks));
+      await syncToFs(key, tracks);
+    }
+  } catch (error) {
+    console.error('Error updating play count:', error);
+  }
+}
+
+export async function toggleFavorite(track: any, favorite: boolean): Promise<void> {
+  try {
+    const key = getNsKey(TRACKS_KEY);
+    const tracks: TrackDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const existingIndex = tracks.findIndex(t => t.id === track.id);
+
+    if (existingIndex >= 0) {
+      tracks[existingIndex].favorite = favorite;
+    } else if (favorite) {
+      const trackDB: TrackDB = {
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album || '',
+        duration: track.duration || 0,
+        filePath: track.filePath || '',
+        format: track.format || 'YouTube',
+        artwork: track.artwork?.large || track.artwork?.medium || track.artwork || '',
+        favorite: true,
+        addedDate: Date.now(),
+        playCount: 1,
+      } as any;
+      tracks.push(trackDB);
+    }
+
+    localStorage.setItem(key, JSON.stringify(tracks));
+    console.log(`[DB] Favorite toggled: ${track.id} -> ${favorite} (${key})`);
+    await syncToFs(key, tracks);
+  } catch (error) {
+    console.error('Error toggling favorite:', error);
+  }
+}
+
+export async function getFavorites(): Promise<any[]> {
+  try {
+    const key = getNsKey(TRACKS_KEY);
+    const tracks: TrackDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+    return tracks.filter(t => t.favorite).sort((a, b) => b.addedDate - a.addedDate);
+  } catch {
+    return [];
+  }
 }
 
 export async function createPlaylist(name: string, description?: string): Promise<string> {
-  if (!db) await initDatabase();
-  if (!db) throw new Error('Database not initialized');
+  const key = getNsKey(PLAYLISTS_KEY);
+  const playlists: PlaylistDB[] = JSON.parse(localStorage.getItem(key) || '[]');
 
-  const id = `playlist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const profile = await getProfile();
+  const limit = TIER_LIMITS[profile.tier].playlists;
+  if (playlists.length >= limit) {
+    throw new Error('Limit reached');
+  }
+
+  const id = `playlist_${Date.now()}`;
   const now = Date.now();
 
-  db.run(
-    'INSERT INTO playlists (id, name, description, createdDate, updatedDate) VALUES (?, ?, ?, ?, ?)',
-    [id, name, description || '', now, now]
-  );
-  saveDatabase();
+  const playlist: PlaylistDB = {
+    id, name, description, createdDate: now, updatedDate: now, trackIds: [],
+  };
+
+  playlists.push(playlist);
+  localStorage.setItem(key, JSON.stringify(playlists));
+  await syncToFs(key, playlists);
 
   return id;
 }
 
 export async function getAllPlaylists(): Promise<any[]> {
-  if (!db) await initDatabase();
-  if (!db) return [];
-
-  const result = db.exec('SELECT * FROM playlists ORDER BY updatedDate DESC');
-  if (result.length === 0) return [];
-
-  const columns = result[0].columns;
-  return result[0].values.map((row) => {
-    const playlist: any = {};
-    columns.forEach((col, idx) => {
-      playlist[col] = row[idx];
-    });
-    playlist.createdDate = new Date(playlist.createdDate);
-    playlist.updatedDate = new Date(playlist.updatedDate);
-    return playlist;
-  });
+  try {
+    const key = getNsKey(PLAYLISTS_KEY);
+    const playlists = JSON.parse(localStorage.getItem(key) || '[]');
+    return playlists.sort((a: PlaylistDB, b: PlaylistDB) => b.updatedDate - a.updatedDate);
+  } catch {
+    return [];
+  }
 }
 
 export async function addTrackToPlaylist(playlistId: string, trackId: string): Promise<void> {
-  if (!db) return;
+  try {
+    const key = getNsKey(PLAYLISTS_KEY);
+    const playlists: PlaylistDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const playlist = playlists.find(p => p.id === playlistId);
 
-  const position = db.exec(
-    'SELECT MAX(position) as maxPos FROM playlist_tracks WHERE playlistId = ?',
-    [playlistId]
-  );
-  
-  const nextPosition = position[0]?.values[0]?.[0] ? Number(position[0].values[0][0]) + 1 : 0;
-
-  db.run(
-    'INSERT INTO playlist_tracks (playlistId, trackId, position, addedDate) VALUES (?, ?, ?, ?)',
-    [playlistId, trackId, nextPosition, Date.now()]
-  );
-
-  db.run('UPDATE playlists SET updatedDate = ? WHERE id = ?', [Date.now(), playlistId]);
-  saveDatabase();
+    if (playlist && !playlist.trackIds.includes(trackId)) {
+      playlist.trackIds.push(trackId);
+      playlist.updatedDate = Date.now();
+      localStorage.setItem(key, JSON.stringify(playlists));
+      await syncToFs(key, playlists);
+    }
+  } catch (error) {
+    console.error('Error adding track to playlist:', error);
+  }
 }
 
 export async function getPlaylistTracks(playlistId: string): Promise<any[]> {
-  if (!db) return [];
+  try {
+    const pKey = getNsKey(PLAYLISTS_KEY);
+    const tKey = getNsKey(TRACKS_KEY);
+    const playlists: PlaylistDB[] = JSON.parse(localStorage.getItem(pKey) || '[]');
+    const playlist = playlists.find(p => p.id === playlistId);
 
-  const result = db.exec(
-    `SELECT t.* FROM tracks t
-     INNER JOIN playlist_tracks pt ON t.id = pt.trackId
-     WHERE pt.playlistId = ?
-     ORDER BY pt.position`,
-    [playlistId]
-  );
+    if (!playlist) return [];
 
-  if (result.length === 0) return [];
+    const tracks: TrackDB[] = JSON.parse(localStorage.getItem(tKey) || '[]');
+    return playlist.trackIds
+      .map(id => tracks.find(t => t.id === id))
+      .filter(Boolean) as any[];
+  } catch {
+    return [];
+  }
+}
 
-  const columns = result[0].columns;
-  return result[0].values.map((row) => {
-    const track: any = {};
-    columns.forEach((col, idx) => {
-      track[col] = row[idx];
-    });
-    track.lossless = Boolean(track.lossless);
-    return track;
-  });
+// Get only the static profile data (email, name, tier)
+export async function getProfileData(): Promise<Partial<UserProfile>> {
+  try {
+    const sessionStr = localStorage.getItem(PROFILE_KEY);
+    if (!sessionStr) return { name: "Usuario", email: "", tier: "standard" };
+
+    const session = JSON.parse(sessionStr);
+    const nsKey = getNsKey(PROFILE_KEY);
+    const namespacedProfileStr = localStorage.getItem(nsKey);
+
+    if (namespacedProfileStr) {
+      return JSON.parse(namespacedProfileStr);
+    }
+
+    // Fallback to session data if no namespaced data yet
+    return {
+      name: session.name || "Usuario",
+      email: session.email || "",
+      tier: session.tier || "standard",
+      bio: session.bio || "",
+      avatar: session.avatar || "",
+      banner: session.banner || ""
+    };
+  } catch {
+    return { name: "Usuario", email: "", tier: "standard" };
+  }
+}
+
+export async function getProfile(): Promise<UserProfile> {
+  try {
+    const profileData = await getProfileData();
+    const tracks = await getAllTracks();
+    const playlists = await getAllPlaylists();
+    const favorites = await getFavorites();
+
+    return {
+      ...profileData,
+      stats: {
+        songs: tracks.length,
+        hours: Math.floor(tracks.reduce((acc, t) => acc + (t.duration || 0), 0) / 3600),
+        favorites: favorites.length,
+        playlists: playlists.length
+      }
+    } as UserProfile;
+  } catch (error) {
+    console.error('Error in getProfile:', error);
+    return {
+      name: "Usuario",
+      email: "",
+      tier: "standard",
+      stats: { songs: 0, hours: 0, favorites: 0, playlists: 0 }
+    } as UserProfile;
+  }
+}
+
+export async function updateProfile(data: Partial<UserProfile>): Promise<void> {
+  try {
+    // BUG 2 Fix: Physical file saving for profile images
+    const processedData = { ...data };
+    if (processedData.avatar && processedData.avatar.startsWith('C:') || processedData.avatar?.startsWith('/') || processedData.avatar?.includes('\\')) {
+      if ((window as any).electron?.saveAvatar) {
+        const newPath = await (window as any).electron.saveAvatar(processedData.avatar);
+        if (newPath) processedData.avatar = newPath;
+      }
+    }
+    if (processedData.banner && processedData.banner.startsWith('C:') || processedData.banner?.startsWith('/') || processedData.banner?.includes('\\')) {
+      if ((window as any).electron?.saveAvatar) {
+        // Reuse saveAvatar for banner
+        const newPath = await (window as any).electron.saveAvatar(processedData.banner);
+        if (newPath) processedData.banner = newPath;
+      }
+    }
+
+    // 1. Update global session pointer (minimal)
+    const currentSession = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+    const updatedSession = { ...currentSession, ...processedData };
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(updatedSession));
+    await syncToFs(PROFILE_KEY, updatedSession);
+
+    // 2. Update namespaced detailed profile
+    const nsKey = getNsKey(PROFILE_KEY);
+    const currentNsProfile = JSON.parse(localStorage.getItem(nsKey) || '{}');
+    const updatedNsProfile = { ...currentNsProfile, ...processedData };
+    localStorage.setItem(nsKey, JSON.stringify(updatedNsProfile));
+    await syncToFs(nsKey, updatedNsProfile);
+
+    console.log(`[DB] Profile updated in namespace: ${nsKey}`);
+  } catch (error) {
+    console.error('Error updating profile:', error);
+  }
+}
+
+export async function setAuthToken(token: string | null): Promise<void> {
+  if (token) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    await syncToFs(AUTH_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    await syncToFs(AUTH_TOKEN_KEY, null);
+  }
+}
+
+export async function removeTrackFromPlaylist(playlistId: string, trackId: string): Promise<void> {
+  try {
+    const key = getNsKey(PLAYLISTS_KEY);
+    const playlists: PlaylistDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const playlist = playlists.find(p => p.id === playlistId);
+
+    if (playlist) {
+      playlist.trackIds = playlist.trackIds.filter(id => id !== trackId);
+      playlist.updatedDate = Date.now();
+      localStorage.setItem(key, JSON.stringify(playlists));
+      await syncToFs(key, playlists);
+    }
+  } catch (error) {
+    console.error('Error removing track from playlist:', error);
+  }
+}
+
+export async function reorderTracksInPlaylist(playlistId: string, trackIds: string[]): Promise<void> {
+  try {
+    const key = getNsKey(PLAYLISTS_KEY);
+    const playlists: PlaylistDB[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const playlist = playlists.find(p => p.id === playlistId);
+
+    if (playlist) {
+      playlist.trackIds = trackIds;
+      playlist.updatedDate = Date.now();
+      localStorage.setItem(key, JSON.stringify(playlists));
+      await syncToFs(key, playlists);
+    }
+  } catch (error) {
+    console.error('Error reordering playlist:', error);
+  }
+}
+
+export async function toggleLikeArtist(artist: any): Promise<void> {
+  try {
+    const key = getNsKey(LIKED_ARTISTS_KEY);
+    const artists: any[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const exists = artists.find(a => a.name === artist.name);
+    let updated;
+    if (exists) {
+      updated = artists.filter(a => a.name !== artist.name);
+    } else {
+      updated = [...artists, { ...artist, likedDate: Date.now() }];
+    }
+    localStorage.setItem(key, JSON.stringify(updated));
+    await syncToFs(key, updated);
+  } catch (error) {
+    console.error('Error toggling like artist:', error);
+  }
+}
+
+export async function getLikedArtists(): Promise<any[]> {
+  try {
+    const key = getNsKey(LIKED_ARTISTS_KEY);
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+export async function toggleFollowPlaylist(playlist: any): Promise<void> {
+  try {
+    const key = getNsKey(FOLLOWED_PLAYLISTS_KEY);
+    const playlists: any[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const exists = playlists.find(p => p.id === playlist.id);
+    let updated;
+    if (exists) {
+      updated = playlists.filter(p => p.id !== playlist.id);
+    } else {
+      updated = [...playlists, { ...playlist, followedDate: Date.now() }];
+    }
+    localStorage.setItem(key, JSON.stringify(updated));
+    await syncToFs(key, updated);
+  } catch (error) {
+    console.error('Error toggling follow playlist:', error);
+  }
+}
+
+export async function getFollowedPlaylists(): Promise<any[]> {
+  try {
+    const key = getNsKey(FOLLOWED_PLAYLISTS_KEY);
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
 }

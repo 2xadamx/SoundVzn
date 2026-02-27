@@ -1,4 +1,25 @@
-import { getSpotifyToken } from './apiConfig';
+import { BACKEND_URL } from './apiConfig';
+const SPOTIFY_BACKEND_TIMEOUT_MS = 5000;
+const SPOTIFY_DISABLE_MS = 5 * 60 * 1000;
+let spotifyDisabledUntil = 0;
+let spotifyDisableWarned = false;
+
+function isSpotifyTemporarilyDisabled(): boolean {
+  return Date.now() < spotifyDisabledUntil;
+}
+
+function disableSpotifyTemporarily(reason: string) {
+  spotifyDisabledUntil = Date.now() + SPOTIFY_DISABLE_MS;
+  if (!spotifyDisableWarned) {
+    spotifyDisableWarned = true;
+    console.warn(`Spotify temporarily disabled: ${reason}`);
+  }
+}
+
+function shouldSilenceSpotifyError(error: any): boolean {
+  const message = String(error?.message || '');
+  return message.includes('SPOTIFY_DISABLED');
+}
 
 export interface SpotifyTrack {
   id: string;
@@ -27,46 +48,86 @@ export interface SpotifyPlaylist {
   };
 }
 
+// Todas las llamadas a Spotify pasan por el backend (token en servidor, nunca en frontend)
+async function spotifyBackendGet(path: string): Promise<any> {
+  if (isSpotifyTemporarilyDisabled()) {
+    throw new Error('SPOTIFY_DISABLED');
+  }
+  const url = `${BACKEND_URL}${path.startsWith('/') ? path : '/' + path}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SPOTIFY_BACKEND_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    let errData: any;
+    try {
+      errData = JSON.parse(text);
+    } catch {
+      errData = { error: text || response.statusText };
+    }
+    if (
+      (response.status === 400 && errData?.error === 'invalid_client') ||
+      response.status === 401 ||
+      response.status === 403
+    ) {
+      disableSpotifyTemporarily(`${response.status}${errData?.error ? `:${errData.error}` : ''}`);
+      throw new Error('SPOTIFY_DISABLED');
+    }
+    console.warn(`Spotify backend ${response.status}:`, errData?.error || path);
+    throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function searchSpotifyTracks(query: string, limit: number = 20): Promise<SpotifyTrack[]> {
   try {
-    const token = await getSpotifyToken();
-
-    const response = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
+    const data = await spotifyBackendGet(
+      `/api/spotify/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`
     );
-
-    if (!response.ok) throw new Error('Spotify API error');
-
-    const data = await response.json();
-    return data.tracks.items;
+    return data.tracks?.items ?? [];
   } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
     console.error('Spotify search error:', error);
+    return [];
+  }
+}
+
+export async function searchSpotifyArtists(query: string, limit: number = 20) {
+  try {
+    const data = await spotifyBackendGet(
+      `/api/spotify/search?q=${encodeURIComponent(query)}&type=artist&limit=${limit}`
+    );
+    return data.artists?.items ?? [];
+  } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
+    console.error('Spotify artist search error:', error);
+    return [];
+  }
+}
+
+export async function searchSpotifyAlbums(query: string, limit: number = 20) {
+  try {
+    const data = await spotifyBackendGet(
+      `/api/spotify/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}`
+    );
+    return data.albums?.items ?? [];
+  } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
+    console.error('Spotify album search error:', error);
     return [];
   }
 }
 
 export async function getSpotifyPlaylist(playlistId: string): Promise<SpotifyPlaylist | null> {
   try {
-    const token = await getSpotifyToken();
-
-    const response = await fetch(
-      `https://api.spotify.com/v1/playlists/${playlistId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) throw new Error('Spotify API error');
-
-    return await response.json();
+    return await spotifyBackendGet(`/api/spotify/playlists/${playlistId}`);
   } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return null;
     console.error('Spotify playlist error:', error);
     return null;
   }
@@ -110,6 +171,7 @@ export async function importSpotifyPlaylistFull(playlistUrl: string): Promise<{
       tracks,
     };
   } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return null;
     console.error('Import Spotify playlist error:', error);
     return null;
   }
@@ -131,22 +193,10 @@ function extractPlaylistId(url: string): string | null {
 
 export async function getSpotifyTrackByISRC(isrc: string): Promise<SpotifyTrack | null> {
   try {
-    const token = await getSpotifyToken();
-
-    const response = await fetch(
-      `https://api.spotify.com/v1/search?q=isrc:${isrc}&type=track&limit=1`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    return data.tracks.items[0] || null;
+    const data = await spotifyBackendGet(`/api/spotify/search?q=isrc:${encodeURIComponent(isrc)}&type=track&limit=1`);
+    return data.tracks?.items?.[0] ?? null;
   } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return null;
     console.error('Spotify ISRC lookup error:', error);
     return null;
   }
@@ -157,24 +207,11 @@ export async function getSpotifyRecommendations(
   limit: number = 20
 ): Promise<SpotifyTrack[]> {
   try {
-    const token = await getSpotifyToken();
-
     const trackIds = seedTracks.slice(0, 5).join(',');
-
-    const response = await fetch(
-      `https://api.spotify.com/v1/recommendations?seed_tracks=${trackIds}&limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) throw new Error('Spotify API error');
-
-    const data = await response.json();
-    return data.tracks;
+    const data = await spotifyBackendGet(`/api/spotify/recommendations?seed_tracks=${trackIds}&limit=${limit}`);
+    return data.tracks ?? [];
   } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
     console.error('Spotify recommendations error:', error);
     return [];
   }
@@ -182,52 +219,77 @@ export async function getSpotifyRecommendations(
 
 export async function getSpotifyNewReleases(limit: number = 20): Promise<SpotifyTrack[]> {
   try {
-    const token = await getSpotifyToken();
-
-    const response = await fetch(
-      `https://api.spotify.com/v1/browse/new-releases?limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) throw new Error('Spotify API error');
-
-    const data = await response.json();
-    
-    const albumIds = data.albums.items.map((album: any) => album.id).join(',');
-    
-    const tracksResponse = await fetch(
-      `https://api.spotify.com/v1/albums?ids=${albumIds}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!tracksResponse.ok) return [];
-
-    const tracksData = await tracksResponse.json();
-    
+    const data = await spotifyBackendGet(`/api/spotify/browse/new-releases?limit=${limit}`);
+    const albumIds = (data.albums?.items ?? []).map((a: any) => a.id).join(',');
+    if (!albumIds) return [];
+    const albumsRes = await spotifyBackendGet(`/api/spotify/albums?ids=${albumIds}`);
     const tracks: SpotifyTrack[] = [];
-    tracksData.albums.forEach((album: any) => {
-      if (album.tracks.items.length > 0) {
+    (albumsRes.albums ?? []).forEach((album: any) => {
+      if (album?.tracks?.items?.length > 0) {
         tracks.push({
           ...album.tracks.items[0],
-          album: {
-            name: album.name,
-            images: album.images,
-          },
+          album: { name: album.name, images: album.images ?? [] },
         });
       }
     });
-
     return tracks;
   } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
     console.error('Spotify new releases error:', error);
+    return [];
+  }
+}
+
+export async function getSpotifyArtistInfo(artistId: string) {
+  try {
+    return await spotifyBackendGet(`/api/spotify/artists/${artistId}`);
+  } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return null;
+    console.error('Spotify artist info error:', error);
+    return null;
+  }
+}
+
+export async function getSpotifyArtistTopTracks(artistId: string, market: string = 'US'): Promise<SpotifyTrack[]> {
+  try {
+    const data = await spotifyBackendGet(`/api/spotify/artists/${artistId}/top-tracks?market=${market}`);
+    return data.tracks ?? [];
+  } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
+    console.error('Spotify artist top tracks error:', error);
+    return [];
+  }
+}
+
+export async function getSpotifyArtistAlbums(artistId: string, limit: number = 20) {
+  try {
+    const data = await spotifyBackendGet(`/api/spotify/artists/${artistId}/albums?limit=${limit}`);
+    return data.items ?? [];
+  } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
+    console.error('Spotify artist albums error:', error);
+    return [];
+  }
+}
+
+export async function getSpotifyArtistRelatedArtists(artistId: string) {
+  try {
+    const data = await spotifyBackendGet(`/api/spotify/artists/${artistId}/related-artists`);
+    return data.artists ?? [];
+  } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
+    console.error('Spotify related artists error:', error);
+    return [];
+  }
+}
+
+export async function getSpotifyAlbumTracks(albumId: string): Promise<SpotifyTrack[]> {
+  try {
+    const data = await spotifyBackendGet(`/api/spotify/albums/${albumId}/tracks`);
+    return data.items ?? [];
+  } catch (error) {
+    if (shouldSilenceSpotifyError(error)) return [];
+    console.error('Spotify album tracks error:', error);
     return [];
   }
 }

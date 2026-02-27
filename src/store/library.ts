@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Track } from '@types/index';
+import { Track } from '../types';
 
 interface LibraryState {
   tracks: Track[];
@@ -76,7 +76,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           comparison = a.album.localeCompare(b.album);
           break;
         case 'dateAdded':
-          comparison = a.addedDate.getTime() - b.addedDate.getTime();
+          comparison = new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime();
           break;
       }
       return sortOrder === 'asc' ? comparison : -comparison;

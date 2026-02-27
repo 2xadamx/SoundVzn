@@ -1,25 +1,26 @@
 import { extractMetadata } from './metadata';
-import { searchUnifiedMultiSource, UnifiedTrackMetadata, getTrackMetadataByISRC } from './unifiedMusicAPI';
-import { getCachedSearch, setCachedSearch, getCachedMetadata, setCachedMetadata } from './cacheManager';
+import { searchUnifiedMultiSource, getTrackMetadataByISRC } from './unifiedMusicAPI';
+import { UnifiedTrackMetadata } from '../types';
+import { getCachedSearch, setCachedSearch, setCachedMetadata } from './cacheManager';
 import { addTrack, getAllTracks } from './database';
 
 export async function enrichLocalTrack(filePath: string): Promise<void> {
   try {
     const localMetadata = await extractMetadata(filePath);
 
-    if (localMetadata.isrc) {
-      const onlineMetadata = await getTrackMetadataByISRC(localMetadata.isrc);
+    if ((localMetadata as any).isrc) {
+      const onlineMetadata = await getTrackMetadataByISRC((localMetadata as any).isrc);
       if (onlineMetadata) {
-        await mergeAndSaveMetadata(filePath, localMetadata, onlineMetadata);
+        await mergeAndSaveMetadata(filePath, localMetadata, onlineMetadata as any);
         return;
       }
     }
 
     const searchQuery = `${localMetadata.artist} ${localMetadata.title}`;
-    
+
     const cached = await getCachedSearch(searchQuery, 'unified');
     let results: UnifiedTrackMetadata[] = [];
-    
+
     if (cached) {
       results = cached;
     } else {
@@ -148,7 +149,7 @@ async function mergeAndSaveMetadata(
   };
 
   await addTrack(merged);
-  
+
   if (online.externalIds.spotify) {
     await setCachedMetadata(online.externalIds.spotify, online);
   }
@@ -156,7 +157,7 @@ async function mergeAndSaveMetadata(
 
 export async function enrichAllLocalTracks(): Promise<void> {
   const tracks = await getAllTracks();
-  
+
   console.log(`Enriching ${tracks.length} tracks...`);
 
   for (const track of tracks) {
