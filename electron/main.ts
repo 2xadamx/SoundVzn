@@ -192,7 +192,7 @@ ipcMain.handle('dialog:openFile', async () => {
   return result.filePaths;
 });
 
-ipcMain.handle('audio:readMetadata', async (_, filePath: string) => {
+ipcMain.handle('audio:readMetadata', async (_event: any, filePath: string) => {
   try {
     const mm = await import('music-metadata');
     const metadata = await mm.parseFile(filePath);
@@ -217,24 +217,9 @@ ipcMain.handle('audio:readMetadata', async (_, filePath: string) => {
   }
 });
 
-ipcMain.handle('window:minimize', () => {
-  mainWindow?.minimize();
-});
-
-ipcMain.handle('window:maximize', () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow?.unmaximize();
-  } else {
-    mainWindow?.maximize();
-  }
-});
-
-ipcMain.handle('window:close', () => {
-  mainWindow?.close();
-});
 
 // Store logic (simple JSON file)
-ipcMain.handle('store:save', async (_, key: string, data: any) => {
+ipcMain.handle('store:save', async (_event: any, key: string, data: any) => {
   try {
     const fs = await import('fs');
     const storagePath = path.join(app.getPath('userData'), 'storage');
@@ -249,7 +234,7 @@ ipcMain.handle('store:save', async (_, key: string, data: any) => {
   }
 });
 
-ipcMain.handle('store:load', async (_, key: string) => {
+ipcMain.handle('store:load', async (_event: any, key: string) => {
   try {
     const fs = await import('fs');
     const filePath = path.join(app.getPath('userData'), 'storage', `${key}.json`);
@@ -298,7 +283,7 @@ ipcMain.handle('download:openFolder', async () => {
   }
 });
 
-ipcMain.handle('download:track', async (_event, videoId: string, title?: string, artist?: string) => {
+ipcMain.handle('download:track', async (_event: any, videoId: string, title?: string, artist?: string) => {
   try {
     const dir = getDownloadsDir();
     const fileName = `${artist || 'Unknown'} - ${title || videoId}.mp3`.replace(/[<>:"/\\|?*]/g, '_');
@@ -354,7 +339,7 @@ ipcMain.handle('download:track', async (_event, videoId: string, title?: string,
   }
 });
 
-ipcMain.handle('download:getPath', async (_event, videoId: string) => {
+ipcMain.handle('download:getPath', async (_event: any, videoId: string) => {
   try {
     const dir = getDownloadsDir();
     if (!fs.existsSync(dir)) return null;
@@ -424,7 +409,7 @@ ipcMain.handle('system:clearCache', async () => {
   }
 });
 
-ipcMain.handle('log:write', async (_: any, level: string, message: string, meta?: any) => {
+ipcMain.handle('log:write', async (_event: any, level: string, message: string, meta?: any) => {
   appendFrontendLog(level || 'INFO', message || '', meta);
   return true;
 });

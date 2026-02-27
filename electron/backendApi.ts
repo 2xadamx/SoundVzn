@@ -105,7 +105,6 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
 
 app.use(express.json());
 const SPOTIFY_HTTP_TIMEOUT_MS = 5000;
-const STREAM_HTTP_TIMEOUT_MS = 60000; // Increased to 1 min for stability
 const YT_USER_AGENT =
   process.env.YT_USER_AGENT ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
