@@ -24,7 +24,7 @@ jobs:
         run: npm ci
 
       - name: Build Electron App (Windows)
-        run: npm run electron:build:win
+        run: npm run electron:build:win -- --publish always
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_SKIP: true
@@ -48,7 +48,7 @@ jobs:
         run: npm ci
 
       - name: Build Electron App (Mac)
-        run: npm run electron:build:mac
+        run: npm run electron:build:mac -- --publish always
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_SKIP: true

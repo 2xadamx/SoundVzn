@@ -116,6 +116,13 @@
       ],
       "icon": "public/logo-app.png",
       "category": "public.app-category.music"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "2xadamx",
+        "repo": "SoundVzn"
+      }
+    ]
   }
 }
