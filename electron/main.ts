@@ -221,7 +221,6 @@ ipcMain.handle('audio:readMetadata', async (_event: any, filePath: string) => {
 // Store logic (simple JSON file)
 ipcMain.handle('store:save', async (_event: any, key: string, data: any) => {
   try {
-    const fs = await import('fs');
     const storagePath = path.join(app.getPath('userData'), 'storage');
     if (!fs.existsSync(storagePath)) {
       fs.mkdirSync(storagePath, { recursive: true });
@@ -236,7 +235,6 @@ ipcMain.handle('store:save', async (_event: any, key: string, data: any) => {
 
 ipcMain.handle('store:load', async (_event: any, key: string) => {
   try {
-    const fs = await import('fs');
     const filePath = path.join(app.getPath('userData'), 'storage', `${key}.json`);
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf8');
