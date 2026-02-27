@@ -107,90 +107,110 @@ export async function initDatabase(): Promise<void> {
 
   dbInitializationPromise = (async () => {
     console.log('[DB] Starting initialization...');
-    // Try to load from filesystem first (global keys for settings, namespaced for data)
-    const fsToken = await (window as any).electron?.loadData(AUTH_TOKEN_KEY);
-    if (fsToken) localStorage.setItem(AUTH_TOKEN_KEY, fsToken);
+    try {
+      // Try to load from filesystem first
+      const fsToken = await (window as any).electron?.loadData(AUTH_TOKEN_KEY);
+      if (fsToken && typeof fsToken === 'string') localStorage.setItem(AUTH_TOKEN_KEY, fsToken);
 
-    const fsProfile = await (window as any).electron?.loadData(PROFILE_KEY);
-    if (fsProfile) localStorage.setItem(PROFILE_KEY, JSON.stringify(fsProfile));
+      let fsProfile = null;
+      try { fsProfile = await (window as any).electron?.loadData(PROFILE_KEY); } catch (e) { }
+      if (fsProfile && typeof fsProfile === 'object') {
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(fsProfile));
+      }
 
-    // If no profile, set default immediately so getNsKey works
-    if (!localStorage.getItem(PROFILE_KEY)) {
-      const defaultProfile = {
-        name: "Usuario",
-        email: "",
-        tier: "standard",
-        bio: "Explorador de sonido.",
-      };
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(defaultProfile));
-    }
+      const rawProfile = localStorage.getItem(PROFILE_KEY);
+      if (!rawProfile || rawProfile === 'null' || rawProfile === 'undefined') {
+        const defaultProfile = {
+          name: "Usuario",
+          email: "",
+          tier: "standard",
+          bio: "Explorador de sonido.",
+        };
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(defaultProfile));
+      }
 
-    // Load full namespaced profile if available
-    const nsProfileKey = getNsKey(PROFILE_KEY);
-    const fsNsProfile = await (window as any).electron?.loadData(nsProfileKey);
-    if (fsNsProfile) {
-      localStorage.setItem(nsProfileKey, JSON.stringify(fsNsProfile));
-      // Sync namespaced data back to global session for easy access
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(fsNsProfile));
-    }
+      // Load full namespaced profile if available
+      const nsProfileKey = getNsKey(PROFILE_KEY);
+      let fsNsProfile = null;
+      try { fsNsProfile = await (window as any).electron?.loadData(nsProfileKey); } catch (e) { }
+      if (fsNsProfile && typeof fsNsProfile === 'object') {
+        localStorage.setItem(nsProfileKey, JSON.stringify(fsNsProfile));
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(fsNsProfile));
+      }
 
-    // Clear current namespace items from localStorage to prevent stale data
-    // before re-loading the new ones
-    console.log(`[DB] Loading data for namespace: ${getNsKey('')}`);
+      console.log(`[DB] Loading data for namespace: ${getNsKey('')}`);
 
-    // Now load namespaced data
-    const tKey = getNsKey(TRACKS_KEY);
-    const pKey = getNsKey(PLAYLISTS_KEY);
+      const tKey = getNsKey(TRACKS_KEY);
+      const pKey = getNsKey(PLAYLISTS_KEY);
 
-    const fsTracks = await (window as any).electron?.loadData(tKey);
-    const fsPlaylists = await (window as any).electron?.loadData(pKey);
+      let fsTracks = null;
+      let fsPlaylists = null;
+      try { fsTracks = await (window as any).electron?.loadData(tKey); } catch (e) { }
+      try { fsPlaylists = await (window as any).electron?.loadData(pKey); } catch (e) { }
 
-    if (fsTracks) localStorage.setItem(tKey, JSON.stringify(fsTracks));
-    if (fsPlaylists) localStorage.setItem(pKey, JSON.stringify(fsPlaylists));
+      if (Array.isArray(fsTracks)) localStorage.setItem(tKey, JSON.stringify(fsTracks));
+      if (Array.isArray(fsPlaylists)) localStorage.setItem(pKey, JSON.stringify(fsPlaylists));
 
-    if (!localStorage.getItem(tKey)) {
-      localStorage.setItem(tKey, JSON.stringify([]));
-    }
+      let rawTKey = localStorage.getItem(tKey);
+      if (!rawTKey || rawTKey === 'null' || rawTKey === 'undefined') {
+        localStorage.setItem(tKey, JSON.stringify([]));
+      } else {
+        try { JSON.parse(rawTKey); } catch { localStorage.setItem(tKey, JSON.stringify([])); }
+      }
 
-    if (!localStorage.getItem(pKey) || JSON.parse(localStorage.getItem(pKey) || '[]').length === 0) {
-      const demoPlaylists: PlaylistDB[] = [
-        {
+      let rawPKey = localStorage.getItem(pKey);
+      let pKeyIsInvalid = !rawPKey || rawPKey === 'null' || rawPKey === 'undefined';
+      if (!pKeyIsInvalid) {
+        try {
+          const parsedPls = JSON.parse(rawPKey as string);
+          if (!Array.isArray(parsedPls) || parsedPls.length === 0) pKeyIsInvalid = true;
+        } catch { pKeyIsInvalid = true; }
+      }
+
+      if (pKeyIsInvalid) {
+        const demoPlaylists: PlaylistDB[] = [{
           id: 'pl_demo_1',
           name: 'Mis Favoritos',
           description: 'Tu colección personal.',
           createdDate: Date.now(),
           updatedDate: Date.now(),
           trackIds: []
-        }
-      ];
-      localStorage.setItem(pKey, JSON.stringify(demoPlaylists));
-      await syncToFs(pKey, demoPlaylists);
-    }
+        }];
+        localStorage.setItem(pKey, JSON.stringify(demoPlaylists));
+        await syncToFs(pKey, demoPlaylists);
+      }
 
-    // Data Migration: If we are logged in but have no tracks, try to migrate from guest
-    const finalProfile = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
-    if (finalProfile.email && finalProfile.email !== 'guest') {
-      const userTKey = getNsKey(TRACKS_KEY);
-      const userTracks = JSON.parse(localStorage.getItem(userTKey) || '[]');
+      // Migration
+      let finalProfile: any = {};
+      try { finalProfile = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}'); } catch { finalProfile = {}; }
 
-      if (userTracks.length === 0) {
-        console.log('[DB] New user detected, attempting migration from guest...');
-        const guestTKey = 'guest_tracks';
-        const guestTracks = JSON.parse(localStorage.getItem(guestTKey) || '[]');
+      if (finalProfile?.email && finalProfile.email !== 'guest') {
+        const userTKey = getNsKey(TRACKS_KEY);
+        let userTracks: any[] = [];
+        try { userTracks = JSON.parse(localStorage.getItem(userTKey) || '[]'); } catch { }
 
-        if (guestTracks.length > 0) {
-          console.log(`[DB] Migrating ${guestTracks.length} tracks from guest to ${finalProfile.email}`);
-          localStorage.setItem(userTKey, JSON.stringify(guestTracks));
-          await syncToFs(userTKey, guestTracks);
+        if (userTracks.length === 0) {
+          console.log('[DB] New user detected, attempting migration from guest...');
+          const guestTKey = 'guest_tracks';
+          let guestTracks: any[] = [];
+          try { guestTracks = JSON.parse(localStorage.getItem(guestTKey) || '[]'); } catch { }
+
+          if (guestTracks.length > 0) {
+            console.log(`[DB] Migrating ${guestTracks.length} tracks.`);
+            localStorage.setItem(userTKey, JSON.stringify(guestTracks));
+            await syncToFs(userTKey, guestTracks);
+          }
         }
       }
+
+      await syncToFs(PROFILE_KEY, finalProfile);
+
+    } catch (err) {
+      console.error('[DB] CRITICAL ERROR IN INIT DATABASE:', err);
+    } finally {
+      isDbInitialized = true;
+      console.log('[DB] Initialization complete. isDbInitialized flag set to true.');
     }
-
-    // Final sync to ensure all defaults are on FS
-    await syncToFs(PROFILE_KEY, finalProfile);
-
-    isDbInitialized = true;
-    console.log('[DB] Initialization complete.');
   })();
 
   return dbInitializationPromise;
