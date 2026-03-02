@@ -204,17 +204,19 @@ export async function initDatabase(): Promise<void> {
       }
 
       await syncToFs(PROFILE_KEY, finalProfile);
+      isDbInitialized = true;
+      console.log('[DB] Initialization complete. isDbInitialized flag set to true.');
 
     } catch (err) {
       console.error('[DB] CRITICAL ERROR IN INIT DATABASE:', err);
-    } finally {
+      // Even on error, we must set it to true so the app doesn't hang forever
       isDbInitialized = true;
-      console.log('[DB] Initialization complete. isDbInitialized flag set to true.');
     }
   })();
 
   return dbInitializationPromise;
 }
+
 
 
 
