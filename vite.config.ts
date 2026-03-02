@@ -8,6 +8,7 @@ import path from 'path';
 import { defineConfig as defineVitestConfig } from 'vitest/config';
 
 export default defineVitestConfig({ // Usa defineVitestConfig aquí
+  base: './',
   plugins: [
     react(),
     electron([
