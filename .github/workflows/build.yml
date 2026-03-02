@@ -50,6 +50,7 @@ jobs:
         run: npm ci
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          YOUTUBE_DL_SKIP_DOWNLOAD: "true"
 
       - name: Build Electron App (Mac)
         run: npm run electron:build:mac -- --publish always
