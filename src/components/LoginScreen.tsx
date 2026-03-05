@@ -256,7 +256,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ clientId, onLoginSucce
                         />
                     </motion.div>
                     <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">SoundVizion</h2>
-                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.6em] mt-2">Secure Node</p>
                 </div>
 
                 <div className="bg-white/[0.03] backdrop-blur-3xl rounded-[32px] border border-white/10 p-8 shadow-2xl relative overflow-hidden">
@@ -331,8 +330,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ clientId, onLoginSucce
                                     </div>
                                     <div className="relative group">
                                         <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-primary-500 transition-colors" size={18} />
-                                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="CONTRASEÑA SEGURA" className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-5 pl-14 pr-6 text-white text-xs font-bold tracking-tight outline-none focus:border-primary-500/50 focus:bg-white/[0.05] transition-all" required minLength={8} />
+                                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="CONTRASEÑA" className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-5 pl-14 pr-6 text-white text-xs font-bold tracking-tight outline-none focus:border-primary-500/50 focus:bg-white/[0.05] transition-all" required minLength={8} />
                                     </div>
+                                    {mode === 'register' && password && password.length < 8 && (
+                                        <p className="text-[10px] text-red-400/80 px-2 font-medium">La contraseña debe tener al menos 8 caracteres</p>
+                                    )}
                                     <p className="text-[10px] text-white/30 px-2 leading-relaxed">Al registrarte, aceptas nuestra <a href="#" className="underline hover:text-white/60">Política de Privacidad</a> (Estándar GDPR).</p>
                                     <button disabled={isLoading} type="submit" className="w-full bg-white text-black font-black text-xs py-5 rounded-2xl transition-all shadow-xl uppercase tracking-widest hover:scale-[1.02] active:scale-95 flex justify-center mt-2 disabled:opacity-50">
                                         {isLoading ? <Loader2 className="animate-spin" size={16} /> : 'Crear Cuenta'}
@@ -443,7 +445,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ clientId, onLoginSucce
                                         <div className="absolute inset-0 flex items-center">
                                             <div className="w-full border-t border-white/5"></div>
                                         </div>
-                                        <span className="relative z-10 bg-[#0c0c16] px-4 text-[8px] font-bold uppercase tracking-[0.4em] text-white/20">Google Sec Sync</span>
                                     </div>
 
                                     <button type="button" onClick={handleGoogleLogin} className="w-full mt-6 flex items-center justify-center gap-3 bg-white/[0.03] border border-white/5 py-4 rounded-xl hover:bg-white/[0.06] transition-all group hover:scale-[1.02] active:scale-95 duration-200">
@@ -453,7 +454,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ clientId, onLoginSucce
                                             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                                             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                                         </svg>
-                                        <span className="text-white/60 text-[10px] font-black uppercase tracking-widest group-hover:text-white transition-colors">Conectar Cuenta</span>
+                                        <span className="text-white/60 text-[10px] font-black uppercase tracking-widest group-hover:text-white transition-colors">Continuar con Google</span>
                                     </button>
                                 </form>
                             )}
@@ -461,11 +462,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ clientId, onLoginSucce
                     </AnimatePresence>
                 </div>
 
-                {/* Secure Badge */}
-                <div className="mt-8 flex items-center justify-center gap-2 opacity-30">
-                    <Shield size={12} className="text-primary-400" />
-                    <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white">Cifrado Industrial Activado</span>
-                </div>
+                {/* Footer Spacer */}
+                <div className="mt-8 h-4" />
             </motion.div>
         </div>
     );

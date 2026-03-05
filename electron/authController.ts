@@ -1,13 +1,7 @@
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'url';
-const require = createRequire(import.meta.url);
-
 import path from 'path';
 import fs from 'fs';
-
-// ESM __dirname equivalent — resolved once at module load
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
 
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -26,21 +20,35 @@ function initializeDb() {
   if (initialized) return;
   initialized = true;
 
-  // SOUNDVZN_USER_DATA is set by Electron main via fork(). In dev mode (npm run dev)
-  // it won't be set, so fall back to a path relative to this source file — which is
-  // deterministic regardless of what process.cwd() happens to be.
-  const userDataPath = process.env.SOUNDVZN_USER_DATA || path.join(__dirname, '..', '.soundvzn_data');
-  if (!fs.existsSync(userDataPath)) {
-    fs.mkdirSync(userDataPath, { recursive: true });
+  // Robust Path Resolution for DB
+  // In production (Electron fork), SOUNDVZN_USER_DATA is app.getPath('userData').
+  // We MUST ensure this path is absolute and reachable.
+  const baseDataDir = process.env.SOUNDVZN_USER_DATA;
+  let userDataPath: string;
+
+  if (baseDataDir && path.isAbsolute(baseDataDir)) {
+    userDataPath = baseDataDir;
+  } else {
+    // Development or fallback
+    userDataPath = path.join(process.cwd(), '.soundvzn_data');
   }
+
+  if (!fs.existsSync(userDataPath)) {
+    try {
+      fs.mkdirSync(userDataPath, { recursive: true });
+    } catch (e: any) {
+      console.error(`[Security] CRITICAL: Could not create userData directory at ${userDataPath}:`, e.message);
+      // Last-ditch fallback to temp or current dir to avoid total crash
+      userDataPath = process.cwd();
+    }
+  }
+
   const dbPath = path.join(userDataPath, 'auth.db');
 
   console.log(`[Security] DB Initialization:
-    Path: ${dbPath}
-    SOUNDVZN_USER_DATA: ${process.env.SOUNDVZN_USER_DATA || '(not set — using __dirname)'}
-    __dirname: ${__dirname}
+    Final Path: ${dbPath}
+    Env DATA: ${process.env.SOUNDVZN_USER_DATA || '(not set)'}
     CWD: ${process.cwd()}
-    JWT_SECRET: ${process.env.JWT_SECRET ? 'SET_VIA_ENV' : 'USING_FALLBACK'}
   `);
 
   try {
@@ -142,21 +150,26 @@ export const authController = {
       throw new Error('El nombre de usuario ya está en uso');
     }
 
-    const id = crypto.randomUUID();
-    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const now = Date.now();
+    try {
+      const id = crypto.randomUUID();
+      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+      const now = Date.now();
 
-    stmts.insertUser.run(id, email, hashedPassword, name, now);
-    console.log(`[Auth] New user registered: ${email} (${id})`);
+      stmts.insertUser.run(id, email, hashedPassword, name, now);
+      console.log(`[Auth] New user registered: ${email} (${id})`);
 
-    const otp = generateOTP();
-    stmts.setVerificationCode.run(email, otp, now + 15 * 60 * 1000);
-    const emailSent = await mailer.sendVerificationEmail(email, otp);
-    console.log(`[Auth] Verification code ${emailSent ? 'sent' : 'FAILED'} to ${email}`);
+      const otp = generateOTP();
+      stmts.setVerificationCode.run(email, otp, now + 15 * 60 * 1000);
+      const emailSent = await mailer.sendVerificationEmail(email, otp);
+      console.log(`[Auth] Verification code ${emailSent ? 'sent' : 'FAILED'} to ${email}`);
 
-    stmts.logAudit.run(id, 'SIGNUP', ip, now, 'User registered');
-    // Always return the code so the UI can display it directly if email is unavailable
-    return { success: true, dev_code: otp };
+      stmts.logAudit.run(id, 'SIGNUP', ip, now, 'User registered');
+      // Always return the code so the UI can display it directly if email is unavailable
+      return { success: true, dev_code: otp };
+    } catch (error: any) {
+      console.error(`[Security] CRITICAL: Signup error for ${email}:`, error.message, error.stack);
+      throw new Error(`Error interno en el registro: ${error.message}`);
+    }
   },
 
   async verifyCode(emailRaw: string, code: string, ip: string) {

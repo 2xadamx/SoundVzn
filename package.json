@@ -1,6 +1,6 @@
 {
   "name": "soundvzn",
-  "version": "1.0.1-beta-f5",
+  "version": "1.0.1-beta-f6",
   "description": "Reproductor de audio profesional de alta fidelidad",
   "main": "dist-electron/main.js",
   "type": "module",
