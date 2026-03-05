@@ -245,7 +245,7 @@ function App() {
     }
   };
 
-  const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || "454597442600-rvl1eks817n3rpm95j9sa0g68u101lu6.apps.googleusercontent.com";
+  const GOOGLE_CLIENT_ID = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || "454597442600-6cp3mid14d7uvk2ob2q2sbe61dmnuvl1.apps.googleusercontent.com";
 
   if (!isDbReady) {
     return (
