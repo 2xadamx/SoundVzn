@@ -250,7 +250,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ clientId, onLoginSucce
                     >
                         <div className="absolute inset-0 bg-primary-500/20 blur-3xl rounded-full scale-150" />
                         <img
-                            src="/logo.png"
+                            src="logo.png"
                             className="h-16 w-auto relative z-10 drop-shadow-[0_0_30px_rgba(59,130,246,0.3)] mx-auto"
                             alt="SoundVizion"
                         />

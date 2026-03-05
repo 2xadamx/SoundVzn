@@ -43,7 +43,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ onComplete }) =>
                         className="relative w-full h-full flex items-center justify-center"
                     >
                         <img
-                            src="/banner-splash.jpeg"
+                            src="banner-splash.jpeg"
                             alt="SoundVzn Banner"
                             className="w-full h-full object-contain relative z-10"
                             style={{

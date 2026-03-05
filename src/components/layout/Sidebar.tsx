@@ -98,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                         whileTap={{ scale: 1 }}
                     >
                         <img
-                            src="/banner-splash.jpeg"
+                            src="banner-splash.jpeg"
                             alt="SoundVizion"
                             className="w-full h-full object-contain relative z-10 scale-125"
                             style={{
@@ -108,9 +108,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                         />
                     </motion.div>
 
-                {/* Background Glow */}
-                <div className="absolute inset-0 bg-white/5 blur-3xl rounded-full opacity-30 pointer-events-none scale-150" />
-            </div>
+                    {/* Background Glow */}
+                    <div className="absolute inset-0 bg-white/5 blur-3xl rounded-full opacity-30 pointer-events-none scale-150" />
+                </div>
                 {/* Main Navigation */}
                 <nav className="space-y-2">
                     {MAIN_NAV_ITEMS.map((item) => (

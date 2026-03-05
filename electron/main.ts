@@ -80,7 +80,9 @@ function createWindow() {
       webSecurity: true,
     },
     show: false,
-    icon: path.join(__dirname, '../public/logo-app.png'),
+    icon: process.env.VITE_DEV_SERVER_URL
+      ? path.join(__dirname, '../public/logo-app.png')
+      : path.join(__dirname, '../dist/logo-app.png'),
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
