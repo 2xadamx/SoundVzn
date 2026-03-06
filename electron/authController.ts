@@ -8,8 +8,9 @@ const jwt = require('jsonwebtoken');
 import { mailer } from './mailer';
 import crypto from 'crypto';
 const Database = require('better-sqlite3');
+import { JWT_SECRET } from './secrets';
 
-const getJWTSecret = () => process.env.JWT_SECRET || 'stellar_secure_super_secret_key_2026';
+const getJWTSecret = () => JWT_SECRET || 'stellar_secure_super_secret_key_2026';
 const SALT_ROUNDS = 12; // Industrial standard
 
 let db: any;

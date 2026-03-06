@@ -8,7 +8,6 @@ export const APISettings: React.FC = () => {
   const [apiStatus, setApiStatus] = useState({
     spotify: false,
     lastfm: false,
-    audd: false,
     itunes: true,
     musicbrainz: true,
     deezer: true,
@@ -17,7 +16,6 @@ export const APISettings: React.FC = () => {
   const [config, setConfig] = useState({
     spotifyClientId: '',
     lastfmApiKey: '',
-    auddApiKey: '',
   });
 
   const [cacheStats, setCacheStats] = useState({
@@ -40,7 +38,6 @@ export const APISettings: React.FC = () => {
     setConfig({
       spotifyClientId: saved.spotify.clientId,
       lastfmApiKey: saved.lastfm.apiKey,
-      auddApiKey: saved.audd.apiKey,
     });
   };
 
@@ -56,7 +53,6 @@ export const APISettings: React.FC = () => {
     setApiStatus({
       spotify: true,
       lastfm: true,
-      audd: false,
       itunes: true,
       musicbrainz: true,
       deezer: true,
@@ -136,14 +132,6 @@ export const APISettings: React.FC = () => {
       free: 'API Key Gratis',
       color: 'from-red-600 to-red-800',
     },
-    {
-      name: 'AudD',
-      key: 'audd',
-      description: 'Music Recognition',
-      status: apiStatus.audd,
-      free: '100/día gratis',
-      color: 'from-pink-600 to-pink-800',
-    },
   ];
 
   return (
@@ -209,34 +197,6 @@ export const APISettings: React.FC = () => {
 
         <div className="bg-dark-800 rounded-2xl p-6 border border-dark-600">
           <h2 className="text-2xl font-bold text-white mb-6">🎸 Last.fm API</h2>
-
-          <div className="space-y-4 mb-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-400 mb-2">
-                API Key
-              </label>
-              <input
-                type="text"
-                value={config.lastfmApiKey}
-                onChange={(e) => setConfig({ ...config, lastfmApiKey: e.target.value })}
-                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-400 mb-2">
-                AudD API Key (Opcional)
-              </label>
-              <input
-                type="text"
-                value={config.auddApiKey}
-                onChange={(e) => setConfig({ ...config, auddApiKey: e.target.value })}
-                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-primary-500"
-              />
-            </div>
-          </div>
 
           <a
             href="https://www.last.fm/api/account/create"

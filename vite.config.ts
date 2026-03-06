@@ -3,9 +3,46 @@ import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron';
 import renderer from 'vite-plugin-electron-renderer';
 import path from 'path';
+import dotenv from 'dotenv';
+import fs from 'fs';
 
 // Importa defineConfig de vitest/config para las opciones de test
 import { defineConfig as defineVitestConfig } from 'vitest/config';
+
+// ——— Load .env for build-time secret injection ———
+// These values are compiled into dist-electron/backend.js as string literals.
+// No .env file ships with the packaged app. The user cannot read these at runtime.
+const envFile = path.resolve(process.cwd(), '.env');
+if (fs.existsSync(envFile)) {
+  dotenv.config({ path: envFile });
+}
+
+/**
+ * Build define map — every secret gets a unique global identifier.
+ * TypeScript type declarations for these are in electron/global.d.ts.
+ */
+function buildSecretDefines(): Record<string, string> {
+  const str = (key: string, fallback = '') =>
+    JSON.stringify(process.env[key] || fallback);
+
+  return {
+    __SMTP_HOST__: str('SMTP_HOST', 'smtp.gmail.com'),
+    __SMTP_PORT__: str('SMTP_PORT', '587'),
+    __SMTP_SECURE__: str('SMTP_SECURE', 'false'),
+    __SMTP_USER__: str('SMTP_USER'),
+    __SMTP_PASS__: str('SMTP_PASS'),
+    __SMTP_FROM__: str('SMTP_FROM'),
+    __JWT_SECRET__: str('JWT_SECRET', 'soundvzn_fallback_dev_secret_2026'),
+    __SPOTIFY_CLIENT_ID__: str('SPOTIFY_CLIENT_ID'),
+    __SPOTIFY_CLIENT_SECRET__: str('SPOTIFY_CLIENT_SECRET'),
+    __LASTFM_API_KEY__: str('LASTFM_API_KEY'),
+    __GOOGLE_CLIENT_SECRET__: str('GOOGLE_CLIENT_SECRET'),
+    __STRIPE_SECRET_KEY__: str('STRIPE_SECRET_KEY'),
+    __STRIPE_PUBLISHABLE_KEY__: str('STRIPE_PUBLISHABLE_KEY'),
+    __STRIPE_PRICE_ID_PRO__: str('STRIPE_PRICE_ID_PRO'),
+    __STRIPE_WEBHOOK_SECRET__: str('STRIPE_WEBHOOK_SECRET'),
+  };
+}
 
 export default defineVitestConfig({ // Usa defineVitestConfig aquí
   base: './',
@@ -18,6 +55,7 @@ export default defineVitestConfig({ // Usa defineVitestConfig aquí
           options.reload();
         },
         vite: {
+          define: buildSecretDefines(),
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
@@ -53,6 +91,7 @@ export default defineVitestConfig({ // Usa defineVitestConfig aquí
           options.reload();
         },
         vite: {
+          define: buildSecretDefines(),
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
@@ -64,7 +103,6 @@ export default defineVitestConfig({ // Usa defineVitestConfig aquí
                 'electron',
                 'express',
                 'axios',
-                'dotenv',
                 'music-metadata',
                 'better-sqlite3',
                 'play-dl',
@@ -77,6 +115,7 @@ export default defineVitestConfig({ // Usa defineVitestConfig aquí
                 'nodemailer',
                 'bcrypt',
                 'jsonwebtoken'
+                // NOTE: 'dotenv' intentionally removed — secrets.ts is bundled inline
               ],
             },
           },

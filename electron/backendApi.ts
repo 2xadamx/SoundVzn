@@ -6,33 +6,35 @@ import type Stripe from 'stripe';
 
 const express = require('express');
 const axios = require('axios');
-const dotenv = require('dotenv');
-import path from 'path';
 const StripeClient = require('stripe');
 import { mailer } from './mailer';
 import { authController } from './authController';
 import { registerYouTubeRoutes } from './backend/youtube';
 import { logInfo } from './backend/logger';
+import {
+  SPOTIFY_CLIENT_ID,
+  SPOTIFY_CLIENT_SECRET,
+  LASTFM_API_KEY,
+  STRIPE_SECRET_KEY,
+  STRIPE_PRICE_ID_PRO,
+} from './secrets';
+
+// ——— Secrets are compiled into the binary at build time via vite.config.ts `define` ———
+// No .env is read at runtime. Diagnostic (values never logged):
+const projectRoot = process.env.SOUNDVZN_USER_DATA || process.cwd();
+const envPath = 'COMPILED_INTO_BINARY';
+console.log('[Backend] Secret availability:', {
+  SPOTIFY_CLIENT_ID: !!SPOTIFY_CLIENT_ID,
+  SPOTIFY_CLIENT_SECRET: !!SPOTIFY_CLIENT_SECRET,
+  LASTFM_API_KEY: !!LASTFM_API_KEY,
+  STRIPE_SECRET_KEY: !!STRIPE_SECRET_KEY,
+  STRIPE_PRICE_ID_PRO: !!STRIPE_PRICE_ID_PRO,
+});
+logInfo(`Backend secrets compiled | projectRoot=${projectRoot}`);
+
+const stripe = new StripeClient(STRIPE_SECRET_KEY || '');
 
 
-// Backend: solo variables SIN prefijo VITE_ (VITE_ es solo para frontend en Vite)
-const projectRoot = process.cwd();
-const envPath = path.resolve(projectRoot, '.env');
-dotenv.config({ path: envPath });
-console.log('[Backend] Loading env from:', envPath);
-if (!process.env.JWT_SECRET) {
-  // Fallback a userData si no está en root (raro, pero preventivo)
-  const fallbackEnv = path.resolve(process.env.SOUNDVZN_USER_DATA || projectRoot, '.env');
-  dotenv.config({ path: fallbackEnv });
-  console.log('[Backend] JWT_SECRET missing, trying fallback env:', fallbackEnv);
-}
-
-console.log('[Backend] Spotify Client ID loaded:', !!process.env.SPOTIFY_CLIENT_ID);
-console.log('[Backend] Last.fm API Key loaded:', !!(process.env.LAST_FM_API_KEY || process.env.VITE_LASTFM_API_KEY));
-console.log('[Backend] Stripe Secret Key loaded:', !!process.env.STRIPE_SECRET_KEY);
-logInfo(`Backend env loaded path=${envPath}`);
-
-const stripe = new StripeClient(process.env.STRIPE_SECRET_KEY || '');
 
 const app = express();
 
@@ -165,18 +167,15 @@ app.get('/api/local/file', (req: Request, res: Response) => {
 // ——— FASE 1.1: Backend Spotify Robusto ———
 let spotifyCachedToken: string | null = null;
 let spotifyTokenExpiresAt: number = 0;
-const SPOTIFY_TOKEN_MARGIN_MS = 60 * 1000; // Renovar 1 min antes de expirar
+const SPOTIFY_TOKEN_MARGIN_MS = 60 * 1000;
 
-// Backend: SOLO variables de entorno directas. NUNCA usar fallback a VITE_* para secretos.
+// Uses build-time compiled secrets — no process.env read at runtime
 function getSpotifyCredentials(): { clientId: string; clientSecret: string } | null {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    console.error('CRITICAL: Spotify Client ID or Secret missing in backend environment.');
+  if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+    console.error('CRITICAL: Spotify credentials missing from compiled secrets.');
     return null;
   }
-  return { clientId: clientId.trim(), clientSecret: clientSecret.trim() };
+  return { clientId: SPOTIFY_CLIENT_ID.trim(), clientSecret: SPOTIFY_CLIENT_SECRET.trim() };
 }
 
 async function fetchSpotifyToken(): Promise<{ access_token: string; expires_in: number }> {
@@ -233,28 +232,26 @@ app.get('/', (_req: Request, res: Response) => {
 
 // Diagnostic Endpoint para el usuario
 app.get('/api/debug/diagnostic', async (_req: Request, res: Response) => {
-  const lastfmKey = (process.env.LASTFM_API_KEY || process.env.VITE_LASTFM_API_KEY || '').trim();
   const spotifyCreds = getSpotifyCredentials();
 
   const diagnostic: any = {
     env: {
-      SPOTIFY_CLIENT_ID: !!process.env.SPOTIFY_CLIENT_ID,
-      SPOTIFY_CLIENT_SECRET: !!process.env.SPOTIFY_CLIENT_SECRET,
-      lastfm_api_key: !!lastfmKey,
+      SPOTIFY_CLIENT_ID: !!SPOTIFY_CLIENT_ID,
+      SPOTIFY_CLIENT_SECRET: !!SPOTIFY_CLIENT_SECRET,
+      lastfm_api_key: !!LASTFM_API_KEY,
       google_client_id: !!process.env.VITE_GOOGLE_CLIENT_ID,
       envPath: envPath,
       userDataPath: projectRoot,
     },
-
-    version: '4.3_diag',
+    version: '4.4_f7',
     spotifyStatus: 'Not tested',
     lastfmStatus: 'Checking...',
   };
 
   // Test Last.fm
   try {
-    if (lastfmKey) {
-      const lfmTest = await axios.get(`https://ws.audioscrobbler.com/2.0/?method=artist.getTopTracks&artist=Radiohead&api_key=${lastfmKey}&format=json&limit=1`, { timeout: 3000 });
+    if (LASTFM_API_KEY) {
+      const lfmTest = await axios.get(`https://ws.audioscrobbler.com/2.0/?method=artist.getTopTracks&artist=Radiohead&api_key=${LASTFM_API_KEY}&format=json&limit=1`, { timeout: 3000 });
       diagnostic.lastfmStatus = lfmTest.data ? 'OK' : 'Empty response';
     } else {
       diagnostic.lastfmStatus = 'MISSING_KEY';
@@ -427,11 +424,11 @@ const authenticateToken = (req: any, res: any, next: any) => {
   next();
 };
 
-app.get('/api/auth/me', authenticateToken, (req: any, res) => {
+app.get('/api/auth/me', authenticateToken, (req: any, res: Response) => {
   res.json({ user: req.user });
 });
 
-app.get('/api/auth/security-dashboard', authenticateToken, (req: any, res) => {
+app.get('/api/auth/security-dashboard', authenticateToken, (req: any, res: Response) => {
   try {
     const data = authController.getSecurityDashboard(req.user.id);
     res.json(data);
@@ -440,7 +437,7 @@ app.get('/api/auth/security-dashboard', authenticateToken, (req: any, res) => {
   }
 });
 
-app.post('/api/auth/update-profile', authenticateToken, async (req: any, res) => {
+app.post('/api/auth/update-profile', authenticateToken, async (req: any, res: Response) => {
   try {
     const { name } = req.body;
     await authController.updateProfile(req.user.id, { name });
@@ -450,7 +447,7 @@ app.post('/api/auth/update-profile', authenticateToken, async (req: any, res) =>
   }
 });
 
-app.get('/api/auth/audit-logs', authenticateToken, (req: any, res) => {
+app.get('/api/auth/audit-logs', authenticateToken, (req: any, res: Response) => {
   try {
     const logs = authController.getAuditLogs(req.user.id);
     res.json({ logs });
@@ -655,11 +652,10 @@ app.get('/api/spotify/recommendations', async (req: Request, res: Response) => {
 
 // Last.fm: solo LASTFM_API_KEY en backend
 app.get('/api/lastfm/trackInfo', async (req: Request, res: Response) => {
-  const LASTFM_API_KEY = process.env.LASTFM_API_KEY || process.env.VITE_LASTFM_API_KEY;
   const { artist, track } = req.query;
 
   if (!LASTFM_API_KEY) {
-    console.error('ERROR: Last.fm API Key no configurada en el backend.');
+    console.error('ERROR: Last.fm API Key missing from compiled secrets.');
     return res.status(500).json({ error: 'Last.fm API Key not configured in backend' });
   }
   if (!artist || !track) {
@@ -676,17 +672,16 @@ app.get('/api/lastfm/trackInfo', async (req: Request, res: Response) => {
     if (isSuspended) {
       return res.status(200).json({ error: 'service_unavailable', message: 'Last.fm key suspended' });
     }
-    console.error('Error al obtener info de track de Last.fm desde el backend:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({ error: 'Failed to get Last.fm track info from backend', details: error.response?.data });
+    console.error('Error al obtener info de track de Last.fm:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ error: 'Failed to get Last.fm track info', details: error.response?.data });
   }
 });
 
 app.get('/api/lastfm/artistInfo', async (req: Request, res: Response) => {
-  const LASTFM_API_KEY = process.env.LASTFM_API_KEY || process.env.VITE_LASTFM_API_KEY;
   const { artist } = req.query;
 
   if (!LASTFM_API_KEY) {
-    console.error('ERROR: Last.fm API Key no configurada en el backend.');
+    console.error('ERROR: Last.fm API Key missing from compiled secrets.');
     return res.status(500).json({ error: 'Last.fm API Key not configured in backend' });
   }
   if (!artist) {
@@ -699,8 +694,8 @@ app.get('/api/lastfm/artistInfo', async (req: Request, res: Response) => {
     );
     res.json(response.data);
   } catch (error: any) {
-    console.error('Error al obtener info de artista de Last.fm desde el backend:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({ error: 'Failed to get Last.fm artist info from backend', details: error.response?.data });
+    console.error('Error al obtener info de artista de Last.fm:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ error: 'Failed to get Last.fm artist info', details: error.response?.data });
   }
 });
 
@@ -772,7 +767,7 @@ app.get('/api/deezer/preview', async (req: Request, res: Response) => {
 // ——— FASE 2.0: Stripe & Payments (v4.9.7) ———
 app.post('/api/payments/create-checkout-session', async (req: Request, res: Response) => {
   const { email } = req.body;
-  if (!process.env.STRIPE_PRICE_ID_PRO || process.env.STRIPE_PRICE_ID_PRO.includes('_TEST_')) {
+  if (!STRIPE_PRICE_ID_PRO || STRIPE_PRICE_ID_PRO.includes('_TEST_')) {
     return res.status(400).json({
       error: 'STRIPE_PRICE_ID_PRO no configurado o inválido. Por favor, crea un producto en tu Dashboard de Stripe y añade el ID real al archivo .env'
     });
