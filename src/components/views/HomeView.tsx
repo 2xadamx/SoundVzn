@@ -122,20 +122,20 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
     }
 
     return (
-        <div className="space-y-12 pb-32 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="space-y-8 pb-56 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
-            <header className="relative z-10 pt-8">
+            <header className="relative z-10 pt-6">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8 }}
                 >
-                    <h1 className="text-5xl font-bold tracking-tight mb-3">
+                    <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">
                         <span>{getGreeting(user?.name)}</span>
                     </h1>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2">
-                            <p className="text-white/40 font-medium tracking-wide text-xs uppercase">
+                            <p className="text-white/40 font-medium tracking-wide text-[10px] uppercase">
                                 {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
                             </p>
                         </div>
@@ -155,7 +155,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
                 <section>
                     <motion.div
                         whileHover={{ scale: 1.003, y: -2 }}
-                        className="relative h-[240px] rounded-3xl overflow-hidden border border-white/5 cursor-pointer group shadow-2xl"
+                        className="relative h-[200px] sm:h-[240px] rounded-2xl sm:rounded-3xl overflow-hidden border border-white/5 cursor-pointer group shadow-2xl"
                         onClick={() => handlePlay(lastFavorite)}
                     >
                         {/* Background artwork blurred */}
@@ -168,37 +168,37 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
                             />
                         )}
                         <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
-                        <div className="absolute inset-0 flex items-center gap-6 px-8">
+                        <div className="absolute inset-0 flex items-center gap-4 sm:gap-6 px-5 sm:px-8">
                             {/* Album Art */}
                             {getTrackImage(lastFavorite) && (
-                                <div className="w-36 h-36 rounded-2xl overflow-hidden flex-shrink-0 shadow-2xl border border-white/10 group-hover:scale-105 transition-transform duration-500">
+                                <div className="w-24 h-24 sm:w-36 sm:h-36 rounded-xl sm:rounded-2xl overflow-hidden flex-shrink-0 shadow-2xl border border-white/10 group-hover:scale-105 transition-transform duration-500">
                                     <img src={getTrackImage(lastFavorite)} className="w-full h-full object-cover" alt="" />
                                 </div>
                             )}
                             {/* Info */}
                             <div className="min-w-0 flex-1">
-                                <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-red-500/20 border border-red-500/30 rounded-full text-red-400 text-[8px] font-black tracking-widest uppercase mb-3">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-red-500/20 border border-red-500/30 rounded-full text-red-400 text-[8px] font-black tracking-widest uppercase mb-2">
                                     <Heart size={8} className="fill-current" /> Último Like
                                 </span>
-                                <h2 className="text-3xl font-black tracking-tighter text-white mb-1 leading-tight truncate">
+                                <h2 className="text-xl sm:text-3xl font-black tracking-tighter text-white mb-1 leading-tight truncate">
                                     {toSentenceCase(String(lastFavorite.title || lastFavorite.track_name || ''))}
                                 </h2>
-                                <p className="text-white/40 text-sm font-bold uppercase tracking-widest truncate">
+                                <p className="text-white/40 text-xs sm:text-sm font-bold uppercase tracking-widest truncate">
                                     {lastFavorite.artist}
                                 </p>
-                                <div className="flex items-center gap-3 mt-4">
+                                <div className="flex items-center gap-2 sm:gap-3 mt-3">
                                     <button
-                                        className="px-6 py-2.5 bg-white text-black rounded-full text-[10px] font-black tracking-tight hover:bg-white/90 transition-all flex items-center gap-2 shadow-lg"
+                                        className="px-4 sm:px-6 py-2 sm:py-2.5 bg-white text-black rounded-full text-[9px] sm:text-[10px] font-black tracking-tight hover:bg-white/90 transition-all flex items-center gap-1.5 sm:gap-2 shadow-lg"
                                         onClick={(e) => { e.stopPropagation(); handlePlay(lastFavorite); }}
                                     >
-                                        <Play size={12} className="fill-current" />
+                                        <Play size={10} sm={12} className="fill-current" />
                                         REPRODUCIR
                                     </button>
                                     <button
-                                        className="px-4 py-2.5 bg-white/5 backdrop-blur-md text-white/50 rounded-full text-[10px] font-bold tracking-tight hover:bg-white/10 transition-all border border-white/5 flex items-center gap-2"
+                                        className="px-3 sm:px-4 py-2 sm:py-2.5 bg-white/5 backdrop-blur-md text-white/50 rounded-full text-[9px] sm:text-[10px] font-bold tracking-tight hover:bg-white/10 transition-all border border-white/5 flex items-center gap-1.5 sm:gap-2"
                                         onClick={(e) => { e.stopPropagation(); setSelectedTrackForPlaylist(lastFavorite); }}
                                     >
-                                        <Plus size={12} />
+                                        <Plus size={10} sm={12} />
                                         Añadir
                                     </button>
                                 </div>
@@ -220,41 +220,41 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             {/* Continue Listening */}
             {continueListening.length > 0 && (
                 <section>
-                    <div className="flex items-center justify-between mb-6 px-1">
-                        <div className="flex items-center gap-2.5">
-                            <Clock size={20} className="text-white/40" />
-                            <h2 className="text-xl font-black text-white tracking-tighter uppercase">Continuar escuchando</h2>
+                    <div className="flex items-center justify-between mb-4 px-1">
+                        <div className="flex items-center gap-2">
+                            <Clock size={16} className="text-white/40" />
+                            <h2 className="text-sm sm:text-xl font-black text-white tracking-tighter uppercase">Continuar escuchando</h2>
                         </div>
                         <button
                             onClick={() => onNavigate?.('library')}
-                            className="text-white/20 hover:text-white transition-colors flex items-center gap-2 text-[9px] font-black tracking-widest">
-                            HISTORIAL <ChevronRight size={12} />
+                            className="text-white/20 hover:text-white transition-colors flex items-center gap-1.5 text-[8px] sm:text-[9px] font-black tracking-widest">
+                            HISTORIAL <ChevronRight size={10} />
                         </button>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                         {continueListening.slice(0, 5).map((item: any, i: number) => (
                             <motion.button
                                 key={`cont-${trackKey(item, i)}`}
-                                whileHover={{ y: -6 }}
+                                whileHover={{ y: -4 }}
                                 onClick={() => handlePlay(item)}
-                                className="group relative bg-white/[0.02] hover:bg-white/[0.04] p-3 rounded-[24px] border border-white/5 transition-all text-left overflow-hidden shadow-lg"
+                                className="group relative bg-white/[0.02] hover:bg-white/[0.04] p-2.5 rounded-2xl sm:rounded-[24px] border border-white/5 transition-all text-left overflow-hidden shadow-lg"
                             >
-                                <div className="aspect-square w-full rounded-[18px] overflow-hidden shadow-2xl mb-4 relative">
+                                <div className="aspect-square w-full rounded-[14px] sm:rounded-[18px] overflow-hidden shadow-2xl mb-3 relative">
                                     <img src={getTrackImage(item)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={item.track_name || item.title} />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300">
-                                        <div className="w-10 h-10 bg-white/20 rounded-full backdrop-blur-xl flex items-center justify-center border border-white/10 scale-90 group-hover:scale-100 transition-transform">
-                                            <Play size={16} className="text-white fill-current ml-0.5" />
+                                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 rounded-full backdrop-blur-xl flex items-center justify-center border border-white/10 scale-90 group-hover:scale-100 transition-transform">
+                                            <Play size={12} sm={16} className="text-white fill-current ml-0.5" />
                                         </div>
                                     </div>
                                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
                                         <div className="h-full bg-primary/60 shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]" style={{ width: '40%' }} />
                                     </div>
                                 </div>
-                                <div className="px-1">
-                                    <p className="text-white/90 font-black text-xs tracking-tight truncate mb-1 group-hover:text-primary transition-colors">
+                                <div className="px-0.5">
+                                    <p className="text-white/90 font-black text-[11px] sm:text-xs tracking-tight truncate mb-0.5 group-hover:text-primary transition-colors">
                                         {String(item.track_name || item.title)}
                                     </p>
-                                    <p className="text-white/30 text-[9px] tracking-widest font-black uppercase truncate">
+                                    <p className="text-white/30 text-[8px] sm:text-[9px] tracking-widest font-black uppercase truncate">
                                         {String(item.artist)}
                                     </p>
                                 </div>
@@ -265,60 +265,60 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             )}
 
             {/* Recommendations Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-                <div className="lg:col-span-8">
-                    <div className="flex items-center gap-2.5 mb-6 px-1">
-                        <Music size={20} className="text-white/40" />
-                        <h2 className="text-xl font-black text-white tracking-tighter uppercase">Tu Selección</h2>
+            <div className="space-y-8">
+                <div>
+                    <div className="flex items-center gap-2 mb-4 px-1">
+                        <Music size={16} className="text-white/40" />
+                        <h2 className="text-sm sm:text-xl font-black text-white tracking-tighter uppercase">Tu Selección</h2>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {recommendations.slice(0, 8).map((item: any, i: number) => (
+                    <div className="grid grid-cols-1 gap-2.5">
+                        {recommendations.slice(0, 6).map((item: any, i: number) => (
                             <motion.div
                                 key={trackKey(item, i)}
-                                whileHover={{ x: 6 }}
+                                whileHover={{ x: 4 }}
                                 onClick={() => handlePlay(item)}
-                                className="group flex items-center gap-4 p-2.5 rounded-[20px] bg-white/[0.02] border border-white/5 hover:border-white/10 hover:bg-white/[0.04] transition-all text-left shadow-lg cursor-pointer"
+                                className="group flex items-center gap-3 p-2 rounded-xl sm:rounded-[20px] bg-white/[0.02] border border-white/5 hover:border-white/10 hover:bg-white/[0.04] transition-all text-left shadow-lg cursor-pointer"
                             >
-                                <div className="w-14 h-14 rounded-[14px] overflow-hidden flex-shrink-0 relative shadow-xl">
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg sm:rounded-[14px] overflow-hidden flex-shrink-0 relative shadow-xl">
                                     <img src={getTrackImage(item)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={item.title} />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                        <Play size={14} className="text-white fill-current" />
+                                        <Play size={12} sm={14} className="text-white fill-current" />
                                     </div>
                                 </div>
-                                <div className="min-w-0 pr-4 flex-1">
-                                    <p className="text-white font-black text-sm tracking-tight truncate group-hover:text-primary transition-colors">{item.title}</p>
-                                    <p className="text-white/30 text-[9px] font-black tracking-widest uppercase truncate mt-1">{item.artist}</p>
+                                <div className="min-w-0 pr-2 flex-1">
+                                    <p className="text-white font-black text-xs sm:text-sm tracking-tight truncate group-hover:text-primary transition-colors">{item.title}</p>
+                                    <p className="text-white/30 text-[8px] sm:text-[9px] font-black tracking-widest uppercase truncate mt-0.5">{item.artist}</p>
                                 </div>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setSelectedTrackForPlaylist(item); }}
-                                    className="p-2 opacity-0 group-hover:opacity-100 hover:bg-white/10 rounded-full transition-all text-white/40 hover:text-white"
+                                    className="p-1.5 sm:p-2 opacity-0 group-hover:opacity-100 hover:bg-white/10 rounded-full transition-all text-white/40 hover:text-white"
                                 >
-                                    <Plus size={14} />
+                                    <Plus size={12} sm={14} />
                                 </button>
                             </motion.div>
                         ))}
                     </div>
                 </div>
 
-                <div className="lg:col-span-4">
-                    <div className="flex items-center gap-2.5 mb-6 px-1">
-                        <BarChart3 size={20} className="text-white/40" />
-                        <h2 className="text-xl font-black text-white tracking-tighter uppercase">Tendencias</h2>
+                <div>
+                    <div className="flex items-center gap-2 mb-4 px-1">
+                        <BarChart3 size={16} className="text-white/40" />
+                        <h2 className="text-sm sm:text-xl font-black text-white tracking-tighter uppercase">Tendencias</h2>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-2.5">
                         {trends.slice(0, 5).map((item: any, i: number) => (
                             <motion.button
                                 key={`trend-${trackKey(item, i)}`}
-                                whileHover={{ scale: 1.02, x: 4 }}
+                                whileHover={{ scale: 1.01, x: 3 }}
                                 onClick={() => handlePlay(item)}
-                                className="w-full flex items-center gap-3.5 p-2 bg-white/[0.01] hover:bg-white/[0.03] rounded-xl transition-all border border-transparent hover:border-white/5 group"
+                                className="w-full flex items-center gap-3 p-1.5 bg-white/[0.01] hover:bg-white/[0.03] rounded-lg sm:rounded-xl transition-all border border-transparent hover:border-white/5 group"
                             >
-                                <div className="w-10 h-10 rounded-[10px] overflow-hidden flex-shrink-0 border border-white/5 shadow-lg">
+                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-[8px] sm:rounded-[10px] overflow-hidden flex-shrink-0 border border-white/5 shadow-lg">
                                     <img src={getTrackImage(item)} className="w-full h-full object-cover group-hover:rotate-12 transition-all duration-500" alt={item.title} />
                                 </div>
                                 <div className="min-w-0 flex-1 text-left">
-                                    <p className="text-white/80 font-bold text-xs truncate group-hover:text-primary transition-colors">{item.title}</p>
-                                    <p className="text-white/20 text-[9px] font-black tracking-widest mt-0.5 uppercase">{item.artist}</p>
+                                    <p className="text-white/80 font-bold text-[11px] sm:text-xs truncate group-hover:text-primary transition-colors">{item.title}</p>
+                                    <p className="text-white/20 text-[8px] sm:text-[9px] font-black tracking-widest mt-0.5 uppercase">{item.artist}</p>
                                 </div>
                             </motion.button>
                         ))}
@@ -329,31 +329,31 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             {/* Global Trends Section */}
             {trends.length > 0 && (
                 <section>
-                    <div className="flex items-center justify-between mb-8 px-1">
-                        <div className="flex items-center gap-3">
-                            <BarChart3 size={24} className="text-white/20" />
-                            <h2 className="text-2xl font-black text-white tracking-tighter uppercase italic">Tendencias Mundiales</h2>
+                    <div className="flex items-center justify-between mb-6 px-1">
+                        <div className="flex items-center gap-2.5">
+                            <BarChart3 size={18} className="text-white/20" />
+                            <h2 className="text-lg sm:text-2xl font-black text-white tracking-tighter uppercase italic">Tendencias Mundiales</h2>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-                        {trends.slice(0, 12).map((item: any, i: number) => (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        {trends.slice(0, 8).map((item: any, i: number) => (
                             <motion.button
                                 key={trackKey(item, i)}
-                                whileHover={{ y: -10 }}
+                                whileHover={{ y: -6 }}
                                 onClick={() => handlePlay(item)}
-                                className="text-left group flex flex-col gap-4"
+                                className="text-left group flex flex-col gap-3"
                             >
-                                <div className="aspect-square w-full rounded-[36px] overflow-hidden shadow-2xl transition-all duration-700 bg-white/[0.02] relative border border-white/5 group-hover:border-white/20">
+                                <div className="aspect-square w-full rounded-2xl sm:rounded-[36px] overflow-hidden shadow-xl transition-all duration-700 bg-white/[0.02] relative border border-white/5 group-hover:border-white/20">
                                     <img src={getTrackImage(item)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 ease-out" alt={item.title} />
                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-500">
-                                        <div className="w-14 h-14 bg-white/20 rounded-full backdrop-blur-2xl flex items-center justify-center border border-white/10 scale-75 group-hover:scale-100 transition-transform duration-500">
-                                            <Play size={24} className="text-white fill-current ml-1" />
+                                        <div className="w-10 h-10 sm:w-14 sm:h-14 bg-white/20 rounded-full backdrop-blur-2xl flex items-center justify-center border border-white/10 scale-75 group-hover:scale-100 transition-transform duration-500">
+                                            <Play size={16} sm={24} className="text-white fill-current ml-0.5" />
                                         </div>
                                     </div>
                                 </div>
-                                <div className="px-2 pb-4">
-                                    <p className="text-white font-black text-[15px] tracking-tight truncate leading-tight group-hover:text-primary transition-colors">{item.title}</p>
-                                    <p className="text-white/30 text-[10px] tracking-[0.1em] font-bold uppercase truncate mt-1">{item.artist}</p>
+                                <div className="px-1 pb-2">
+                                    <p className="text-white font-black text-[13px] sm:text-[15px] tracking-tight truncate leading-tight group-hover:text-primary transition-colors">{item.title}</p>
+                                    <p className="text-white/30 text-[9px] sm:text-[10px] tracking-[0.1em] font-bold uppercase truncate mt-0.5">{item.artist}</p>
                                 </div>
                             </motion.button>
                         ))}
@@ -364,26 +364,26 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             {/* New Releases Section */}
             {newReleases.length > 0 && (
                 <section>
-                    <div className="flex items-center justify-between mb-8 px-1">
-                        <div className="flex items-center gap-3">
-                            <Disc size={24} className="text-white/20" />
-                            <h2 className="text-2xl font-black text-white tracking-tighter uppercase italic">Nuevos Lanzamientos</h2>
+                    <div className="flex items-center justify-between mb-6 px-1">
+                        <div className="flex items-center gap-2.5">
+                            <Disc size={18} className="text-white/20" />
+                            <h2 className="text-lg sm:text-2xl font-black text-white tracking-tighter uppercase italic">Nuevos Lanzamientos</h2>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
-                        {newReleases.slice(0, 10).map((item: any, i: number) => (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
+                        {newReleases.slice(0, 8).map((item: any, i: number) => (
                             <motion.button
                                 key={`new-${trackKey(item, i)}`}
-                                whileHover={{ scale: 1.05 }}
+                                whileHover={{ scale: 1.03 }}
                                 onClick={() => handlePlay(item)}
                                 className="text-center group"
                             >
-                                <div className="aspect-square w-full rounded-[40px] overflow-hidden shadow-2xl mb-4 bg-white/5 relative border border-white/10">
+                                <div className="aspect-square w-full rounded-3xl sm:rounded-[40px] overflow-hidden shadow-xl mb-3 bg-white/5 relative border border-white/10">
                                     <img src={getTrackImage(item)} className="w-full h-full object-cover group-hover:rotate-3 transition-transform duration-700" alt={item.title} />
                                     <div className="absolute inset-0 bg-gradient-to-tr from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </div>
-                                <p className="text-white font-bold text-sm truncate px-2">{item.title}</p>
-                                <p className="text-white/30 text-[10px] font-black uppercase tracking-widest mt-1">{item.artist}</p>
+                                <p className="text-white font-bold text-xs sm:text-sm truncate px-1">{item.title}</p>
+                                <p className="text-white/30 text-[9px] sm:text-[10px] font-black uppercase tracking-widest mt-0.5">{item.artist}</p>
                             </motion.button>
                         ))}
                     </div>
