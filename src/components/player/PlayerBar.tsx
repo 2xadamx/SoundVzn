@@ -80,7 +80,7 @@ export const PlayerBar: React.FC<{ onNavigate?: (view: string, params?: any) => 
     if (!currentTrack) return null;
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-[100] select-none">
+        <div className="fixed bottom-16 sm:bottom-0 left-0 right-0 z-[100] select-none">
             {/* ── MOBILE PLAYER (sm and below) ── */}
             <div className="sm:hidden bg-black/90 backdrop-blur-3xl border-t border-white/[0.06] shadow-[0_-8px_30px_rgba(0,0,0,0.6)]">
                 {/* Progress bar */}

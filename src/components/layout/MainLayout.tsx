@@ -233,7 +233,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
                     {/* Header — desktop and mobile (Header handles its own responsive layout) */}
                     <Header onNavigate={onNavigate} currentView={currentView} />
 
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 sm:pt-4 scroll-smooth pb-48 sm:pb-24 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 sm:pt-4 scroll-smooth pb-56 sm:pb-24 custom-scrollbar">
                         {children}
                     </div>
                 </main>
@@ -266,11 +266,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
                 {isLyricsOpen && <LyricsView />}
             </AnimatePresence>
 
-            {!isLyricsOpen && !isGlassOpen && <PlayerBar onNavigate={onNavigate} />}
-
             {/* ── Mobile Bottom Navigation Bar ── */}
             {!isLyricsOpen && !isGlassOpen && (
-                <nav className="sm:hidden fixed bottom-[80px] left-0 right-0 z-[99] bg-black/80 backdrop-blur-3xl border-t border-white/[0.06] px-2 py-1 flex items-center justify-around">
+                <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-[99] bg-black/80 backdrop-blur-3xl border-t border-white/[0.06] px-2 py-1 flex items-center justify-around">
                     {([
                         { id: 'home',     icon: Home,      label: 'Inicio' },
                         { id: 'search',   icon: Search,    label: 'Buscar' },
@@ -297,6 +295,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
                     })}
                 </nav>
             )}
+
+            {!isLyricsOpen && !isGlassOpen && <div className="sm:hidden h-16" />}
+            {!isLyricsOpen && !isGlassOpen && <PlayerBar onNavigate={onNavigate} />}
         </div>
     );
 };
