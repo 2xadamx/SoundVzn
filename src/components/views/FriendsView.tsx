@@ -604,68 +604,36 @@ const ChatPanel: React.FC<{ friend: SocialUser; onClose: () => void }> = ({ frie
             initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
             className="flex-1 flex flex-col h-full overflow-hidden bg-[#08080a]"
         >
-            {/* ── Chat Header ── */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.04] bg-black/30 shrink-0">
-                <button onClick={onClose} className="p-2 -ml-1 text-white/40 hover:text-white transition-colors sm:hidden">
-                    <ChevronLeft size={20} />
+            {/* ── Chat Header — Instagram style ── */}
+            <div className="flex items-center gap-3 px-3 sm:px-4 py-3 border-b border-white/[0.04] bg-black/50 backdrop-blur-xl shrink-0">
+                <button onClick={onClose} className="p-2 -ml-1 text-white/50 hover:text-white transition-colors">
+                    <ChevronLeft size={22} />
                 </button>
                 <button onClick={() => window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'profile', params: { userId: friend.id } } }))}
                     className="relative shrink-0">
-                    <UserAvatar user={friend} size="w-10 h-10" className="rounded-xl" />
-                    <StatusDot status={friend.status} />
+                    <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/10">
+                        {friend.avatar
+                            ? <img src={friend.avatar} className="w-full h-full object-cover" alt="" />
+                            : <div className="w-full h-full bg-white/10 flex items-center justify-center text-sm font-bold text-white/50">{friend.name?.[0]}</div>
+                        }
+                    </div>
+                    <div className={clsx('absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#08080a]',
+                        friend.status === 'online' ? 'bg-emerald-400' : 'bg-gray-600')} />
                 </button>
                 <button onClick={() => window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'profile', params: { userId: friend.id } } }))}
                     className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-bold text-white/90 truncate">{friend.name}</p>
-                    <div className="flex items-center gap-1.5">
-                        {friend.activity?.track ? (
-                            <>
-                                <MusicBars />
-                                <span className="text-[10px] text-primary/70 truncate italic">{friend.activity.track}</span>
-                            </>
-                        ) : (
-                            <span className={clsx('text-[10px] font-bold uppercase tracking-wider',
-                                friend.status === 'online' ? 'text-emerald-400/70' : 'text-white/20'
-                            )}>
-                                {friend.status === 'online' ? 'En línea' : 'Desconectado'}
-                            </span>
-                        )}
-                    </div>
+                    <p className="text-[14px] font-bold text-white truncate">{friend.name}</p>
+                    <p className="text-[11px] text-white/40 truncate">
+                        {friend.activity?.track ? `🎵 ${friend.activity.track}` : friend.status === 'online' ? 'En línea' : 'Desconectado'}
+                    </p>
                 </button>
                 <div className="flex items-center gap-1 shrink-0">
                     {currentTrack && (
-                        <button onClick={shareCurrentTrack} title="Compartir canción actual"
-                            className="p-2 text-white/30 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-                            <Music2 size={16} />
+                        <button onClick={shareCurrentTrack} title="Compartir canción"
+                            className="w-9 h-9 flex items-center justify-center text-white/30 hover:text-white rounded-full hover:bg-white/5 transition-all">
+                            <Music2 size={18} />
                         </button>
                     )}
-                    <div className="relative">
-                        <button onClick={() => setMenuOpen(!menuOpen)}
-                            className={clsx('p-2 text-white/30 hover:text-white hover:bg-white/5 rounded-xl transition-all', menuOpen && 'bg-white/10 text-white')}>
-                            <Settings size={16} />
-                        </button>
-                        <AnimatePresence>
-                            {menuOpen && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.95, y: 6 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.95, y: 6 }}
-                                    className="absolute right-0 mt-2 w-56 bg-[#141416]/95 backdrop-blur-3xl border border-white/10 rounded-2xl shadow-2xl p-1.5 z-50"
-                                >
-                                    <button onClick={() => { setMusicFilter(!musicFilter); setMenuOpen(false); }}
-                                        className={clsx('w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors',
-                                            musicFilter ? 'text-primary bg-primary/5' : 'text-white/70 hover:text-white hover:bg-white/5'
-                                        )}>
-                                        <Music2 size={15} /> {musicFilter ? 'Ver todos' : 'Solo música'}
-                                    </button>
-                                    <button onClick={async () => { if (confirm('¿Vaciar conversación?')) { await socialService.clearChat(friend.id); loadMessages(); setMenuOpen(false); } }}
-                                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-amber-500/70 hover:text-amber-500 hover:bg-amber-500/10 rounded-xl transition-colors">
-                                        <Trash2 size={15} /> Vaciar chat
-                                    </button>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
                 </div>
             </div>
 
@@ -770,18 +738,18 @@ const ChatPanel: React.FC<{ friend: SocialUser; onClose: () => void }> = ({ frie
                 })}
             </div>
 
-            {/* ── Input ── */}
-            <div className="px-4 py-3 bg-gradient-to-t from-black/60 to-transparent shrink-0">
-                <div className="flex items-center gap-2 bg-white/[0.06] border border-white/10 rounded-2xl pl-4 pr-2 py-1.5 focus-within:border-white/20 transition-all">
+            {/* ── Input — Instagram style ── */}
+            <div className="px-3 sm:px-4 py-3 bg-[#08080a] border-t border-white/[0.04] shrink-0">
+                <div className="flex items-center gap-2 bg-white/[0.06] border border-white/[0.08] rounded-full px-4 py-2 focus-within:border-white/20 transition-all">
                     <input ref={inputRef} value={text} onChange={e => setText(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                        placeholder={`Mensaje a ${friend.name.split(' ')[0]}...`}
-                        className="flex-1 bg-transparent border-none outline-none text-[13px] text-white placeholder:text-white/20 py-1.5" />
+                        placeholder={`Mensaje...`}
+                        className="flex-1 bg-transparent border-none outline-none text-[14px] text-white placeholder:text-white/25 py-1" />
                     <button onClick={() => handleSend()} disabled={!text.trim()}
-                        className={clsx('p-2.5 rounded-xl transition-all active:scale-95',
-                            text.trim() ? 'bg-primary text-black hover:bg-primary/90 shadow-lg' : 'bg-white/5 text-white/10 cursor-not-allowed'
+                        className={clsx('w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0',
+                            text.trim() ? 'bg-primary text-black' : 'text-white/20 cursor-not-allowed'
                         )}>
-                        <Send size={15} />
+                        <Send size={14} />
                     </button>
                 </div>
             </div>

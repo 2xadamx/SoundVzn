@@ -19,28 +19,15 @@ if (isOAuthPopup) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// FIX INSTANTÁNEO ERROR 431: Limpiar cookies y datos corruptos.
-document.cookie.split(";").forEach((c) => {
-  document.cookie = c
-    .replace(/^ +/, "")
-    .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-});
-
-// Limpiar token si es demasiado grande (>10KB = token corrupto o con demasiados datos)
+// Limpiar token solo si es demasiado grande (>10KB = corrupto)
 const existingToken = localStorage.getItem('svzn_token');
 if (existingToken && existingToken.length > 10000) {
-    console.warn('[Main] Token demasiado grande, limpiando sesión...');
+    console.warn('[Main] Token demasiado grande, limpiando...');
     localStorage.removeItem('svzn_token');
     localStorage.removeItem('auth_access_token');
     localStorage.removeItem('svzn_refresh');
-    localStorage.removeItem('clear_431_done');
 }
-
-if (localStorage.getItem('clear_431_done') !== 'true') {
-    localStorage.removeItem('svzn_token');
-    localStorage.removeItem('auth_access_token');
-    localStorage.setItem('clear_431_done', 'true');
-}
+// NO borrar cookies ni tokens válidos en cada carga — causaba logout forzado
 
 // Lazy load App to ensure webCompat is initialized and reduce initial bundle pressure
 const mountApp = async () => {

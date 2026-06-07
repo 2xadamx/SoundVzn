@@ -36,9 +36,8 @@ export interface SocialUser {
 class SocialService {
     async togglePin(friendId: string): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/friends/${friendId}/pin`, {
-                method: 'POST',
-                headers: this.getHeaders(),
+            const res = await authFetch(`${BACKEND_URL}/api/social/friends/${friendId}/pin`, {
+                method: 'POST', headers: this.getHeaders(),
             });
             return res.ok;
         } catch (e) { return false; }
@@ -46,9 +45,8 @@ class SocialService {
 
     async toggleMute(friendId: string): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/friends/${friendId}/mute`, {
-                method: 'POST',
-                headers: this.getHeaders(),
+            const res = await authFetch(`${BACKEND_URL}/api/social/friends/${friendId}/mute`, {
+                method: 'POST', headers: this.getHeaders(),
             });
             return res.ok;
         } catch (e) { return false; }
@@ -56,9 +54,8 @@ class SocialService {
 
     async clearChat(friendId: string): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/messages/${friendId}/clear`, {
-                method: 'DELETE',
-                headers: this.getHeaders(),
+            const res = await authFetch(`${BACKEND_URL}/api/social/messages/${friendId}/clear`, {
+                method: 'DELETE', headers: this.getHeaders(),
             });
             return res.ok;
         } catch (e) { return false; }
@@ -66,9 +63,8 @@ class SocialService {
 
     async blockUser(userId: string): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/users/${userId}/block`, {
-                method: 'POST',
-                headers: this.getHeaders(),
+            const res = await authFetch(`${BACKEND_URL}/api/social/users/${userId}/block`, {
+                method: 'POST', headers: this.getHeaders(),
             });
             return res.ok;
         } catch (e) { return false; }
@@ -81,89 +77,87 @@ class SocialService {
     async getFriends(): Promise<SocialUser[]> {
         try {
             const res = await authFetch(`${BACKEND_URL}/api/social/friends`, { headers: this.getHeaders() });
-            if (!res.ok) throw new Error('Network fail');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
         } catch (e) {
-            console.error('[Social] Connection offline');
+            console.error('[Social] getFriends failed:', e);
             return [];
         }
     }
 
     async sendFriendRequest(userIdOrEmail: string): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/request`, {
+            const res = await authFetch(`${BACKEND_URL}/api/social/request`, {
                 method: 'POST',
                 headers: this.getHeaders(),
                 body: JSON.stringify({ target: userIdOrEmail })
             });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: res.statusText }));
+                console.error('[Social] sendFriendRequest failed:', res.status, err);
+            }
             return res.ok;
         } catch (e) {
+            console.error('[Social] sendFriendRequest error:', e);
             return false;
         }
     }
 
     async removeFriend(id: string): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/friends/${id}`, {
-                method: 'DELETE',
-                headers: this.getHeaders(),
+            const res = await authFetch(`${BACKEND_URL}/api/social/friends/${id}`, {
+                method: 'DELETE', headers: this.getHeaders(),
             });
+            if (!res.ok) console.error('[Social] removeFriend failed:', res.status);
             return res.ok;
         } catch (e) {
+            console.error('[Social] removeFriend error:', e);
             return false;
         }
     }
 
     async updateActivity(status: string, trackInfo?: any): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/status`, {
+            const res = await authFetch(`${BACKEND_URL}/api/social/status`, {
                 method: 'POST',
                 headers: this.getHeaders(),
                 body: JSON.stringify({ status, trackInfo: trackInfo || null })
             });
             return res.ok;
-        } catch (e) {
-            return false;
-        }
+        } catch (e) { return false; }
     }
 
     async saveNote(noteData: any): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/notes`, {
+            const res = await authFetch(`${BACKEND_URL}/api/social/notes`, {
                 method: 'POST',
                 headers: this.getHeaders(),
                 body: JSON.stringify(noteData)
             });
             return res.ok;
-        } catch (e) {
-            return false;
-        }
+        } catch (e) { return false; }
     }
 
     async deleteNote(): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/notes`, {
-                method: 'DELETE',
-                headers: this.getHeaders(),
+            const res = await authFetch(`${BACKEND_URL}/api/social/notes`, {
+                method: 'DELETE', headers: this.getHeaders(),
             });
             return res.ok;
-        } catch (e) {
-            return false;
-        }
+        } catch (e) { return false; }
     }
 
-
-    // ─── Messaging ───
     async getChat(friendId: string): Promise<any[]> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/messages/${friendId}`, { headers: this.getHeaders() });
+            const res = await authFetch(`${BACKEND_URL}/api/social/messages/${friendId}`, { headers: this.getHeaders() });
+            if (!res.ok) return [];
             return await res.json();
         } catch (e) { return []; }
     }
 
     async sendMessage(targetId: string, type: 'text' | 'music', content: string, trackData?: any): Promise<boolean> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/messages`, {
+            const res = await authFetch(`${BACKEND_URL}/api/social/messages`, {
                 method: 'POST',
                 headers: this.getHeaders(),
                 body: JSON.stringify({ targetId, type, content, trackData })
@@ -172,10 +166,9 @@ class SocialService {
         } catch (e) { return false; }
     }
 
-    // ─── Note Interactions ───
     async toggleLike(noteId: string): Promise<{ liked?: boolean; error?: boolean }> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/notes/like`, {
+            const res = await authFetch(`${BACKEND_URL}/api/social/notes/like`, {
                 method: 'POST',
                 headers: this.getHeaders(),
                 body: JSON.stringify({ noteId })
@@ -186,7 +179,8 @@ class SocialService {
 
     async getNoteInteractions(noteId: string): Promise<{ likers: any[]; replies: any[] }> {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/social/notes/${noteId}/interactions`, { headers: this.getHeaders() });
+            const res = await authFetch(`${BACKEND_URL}/api/social/notes/${noteId}/interactions`, { headers: this.getHeaders() });
+            if (!res.ok) return { likers: [], replies: [] };
             return await res.json();
         } catch (e) { return { likers: [], replies: [] }; }
     }

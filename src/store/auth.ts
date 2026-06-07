@@ -82,34 +82,33 @@ export const useAuth = create<AuthState>((set, get) => ({
             }
             return null;
         } catch (err: any) {
-            console.warn('[AuthStore] Sync failed, clearing stale token.');
-            clearAccessToken();
-
-            const restored = await tryDevSessionRestore();
-            if (restored) {
-                try {
-                    const res = await api.get('/api/auth/me');
-                    const userData = sanitizeUserAvatar(res.data.user);
-                    if (userData) {
-                        localStorage.setItem('svzn_user', JSON.stringify(userData));
-                        import('../utils/database').then(db => db.updateProfile(userData));
-                        set({ user: userData, isAuthenticated: true, isInitialized: true });
-                        return userData;
-                    }
-                } catch {
-                    // fall through
+            // Only clear token on explicit 401/403, not on network errors
+            if (err?.response?.status === 401 || err?.response?.status === 403) {
+                // Try token refresh before giving up
+                const newToken = await refreshAccessToken();
+                if (newToken) {
+                    try {
+                        const res2 = await api.get('/api/auth/me');
+                        const userData2 = sanitizeUserAvatar(res2.data.user);
+                        if (userData2) {
+                            localStorage.setItem('svzn_user', JSON.stringify(userData2));
+                            set({ user: userData2, isAuthenticated: true, isInitialized: true });
+                            return userData2;
+                        }
+                    } catch {}
                 }
+                clearAccessToken();
             }
-
+            // Network/server error — use cache, stay authenticated
             const cached = localStorage.getItem('svzn_user');
             if (cached) {
-                const parsed = sanitizeUserAvatar(JSON.parse(cached));
-                localStorage.setItem('svzn_user', JSON.stringify(parsed));
-                set({ user: parsed, isAuthenticated: false, isInitialized: true });
-                return parsed;
+                try {
+                    const parsed = sanitizeUserAvatar(JSON.parse(cached));
+                    set({ user: parsed, isAuthenticated: !!getAccessToken(), isInitialized: true });
+                    return parsed;
+                } catch {}
             }
-            
-            set({ isInitialized: true, isAuthenticated: false, user: null });
+            set({ isInitialized: true });
             return null;
         }
     },

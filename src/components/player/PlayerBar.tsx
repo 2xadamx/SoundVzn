@@ -81,63 +81,61 @@ export const PlayerBar: React.FC<{ onNavigate?: (view: string, params?: any) => 
 
     return (
         <div className="select-none">
-            {/* ── MOBILE PLAYER (sm and below) ── */}
-            <div className="sm:hidden bg-black/95 backdrop-blur-2xl border-t border-white/10 shadow-[0_-4px_30px_rgba(0,0,0,0.7)]">
-                {/* Progress bar */}
-                <div className="relative h-[4px] bg-white/10 group/prog cursor-pointer">
-                    <div className="h-full bg-white/90 transition-all" style={{ width: `${progress}%` }} />
-                    <input type="range" min="0" max="100" step="0.1"
-                        value={progress || 0}
-                        onTouchStart={() => setIsSeeking(true)}
-                        onMouseDown={() => setIsSeeking(true)}
-                        onChange={handleSeekChange}
-                        onMouseUp={e => commitSeek(parseFloat(e.currentTarget.value))}
-                        onTouchEnd={e => commitSeek(parseFloat(e.currentTarget.value))}
-                        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-                        style={{ height: '20px', top: '-8px' }}
-                    />
-                </div>
-
-                <div className="flex items-center gap-3 px-4 py-3">
-                    {/* Artwork */}
-                    <button onClick={async () => {
-                            setIsGlassOpen(true);
-                            try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (e) { console.warn(e); }
-                        }}
-                        className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 bg-white/5 border border-white/10 shadow-xl">
-                        {currentTrack.artwork && !isResolving
-                            ? <img src={currentTrack.artwork} className="w-full h-full object-cover" alt="" />
-                            : <div className="w-full h-full flex items-center justify-center">
-                                <Mic2 size={16} className={clsx('text-white/20', isResolving && 'animate-pulse')} />
-                              </div>
-                        }
-                    </button>
-
-                    {/* Track info */}
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black text-white truncate leading-tight">{currentTrack.title}</p>
-                        <p className="text-xs text-white/40 truncate">{normalizeArtistName(currentTrack.artist)}</p>
+            {/* ── MOBILE PLAYER — estilo Spotify/Apple Music ── */}
+            <div className="sm:hidden fixed left-2 right-2 z-[150]" style={{ bottom: 'calc(58px + env(safe-area-inset-bottom, 0px) + 6px)' }}>
+                <div className="bg-[#1c1c1e]/95 backdrop-blur-3xl rounded-[20px] overflow-hidden border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.8)]">
+                    {/* Mini progress bar */}
+                    <div className="h-[2px] bg-white/10 relative group/prog cursor-pointer">
+                        <div className="h-full bg-white/80 transition-none" style={{ width: `${progress}%` }} />
+                        <input type="range" min="0" max="100" step="0.1"
+                            value={progress || 0}
+                            onTouchStart={() => setIsSeeking(true)}
+                            onMouseDown={() => setIsSeeking(true)}
+                            onChange={handleSeekChange}
+                            onMouseUp={e => commitSeek(parseFloat(e.currentTarget.value))}
+                            onTouchEnd={e => commitSeek(parseFloat(e.currentTarget.value))}
+                            className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
+                            style={{ height: '20px', top: '-9px' }}
+                        />
                     </div>
 
-                    {/* Mobile controls */}
-                    <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={() => toggleFavorite()}
-                            className={clsx('p-2 transition-all active:scale-90', currentTrack.favorite ? 'text-rose-400' : 'text-white/25 hover:text-white/60')}>
-                            <Heart size={20} className={currentTrack.favorite ? 'fill-current' : ''} />
-                        </button>
-                        <button onClick={playPrevious} className="p-2 text-white/60 active:scale-90 transition-all hover:text-white">
-                            <SkipBack size={22} fill="currentColor" />
-                        </button>
-                        <button onClick={() => setIsPlaying(!isPlaying)}
-                            className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-xl active:scale-95 transition-all hover:scale-105">
-                            {isPlaying
-                                ? <Pause size={20} fill="currentColor" />
-                                : <Play size={20} fill="currentColor" className="ml-0.5" />
+                    <div className="flex items-center gap-3 px-3 py-2.5">
+                        {/* Artwork — tap to open GlassCenter */}
+                        <button onClick={() => setIsGlassOpen(true)}
+                            className="w-11 h-11 rounded-xl overflow-hidden shrink-0 bg-white/5 shadow-lg active:scale-95 transition-transform">
+                            {currentTrack.artwork && !isResolving
+                                ? <img src={currentTrack.artwork} className="w-full h-full object-cover" alt="" />
+                                : <div className="w-full h-full flex items-center justify-center">
+                                    <Mic2 size={14} className={clsx('text-white/30', isResolving && 'animate-pulse')} />
+                                  </div>
                             }
                         </button>
-                        <button onClick={playNext} className="p-2 text-white/60 active:scale-90 transition-all hover:text-white">
-                            <SkipForward size={22} fill="currentColor" />
+
+                        {/* Track info — tap to open GlassCenter */}
+                        <button onClick={() => setIsGlassOpen(true)} className="flex-1 min-w-0 text-left">
+                            <p className="text-[13px] font-bold text-white truncate leading-tight">{currentTrack.title}</p>
+                            <p className="text-[11px] text-white/50 truncate mt-0.5">{normalizeArtistName(currentTrack.artist)}</p>
                         </button>
+
+                        {/* Controls */}
+                        <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => toggleFavorite()}
+                                className={clsx('w-9 h-9 flex items-center justify-center rounded-full transition-all active:scale-90',
+                                    currentTrack.favorite ? 'text-rose-400' : 'text-white/30')}>
+                                <Heart size={18} className={currentTrack.favorite ? 'fill-current' : ''} />
+                            </button>
+                            <button onClick={() => setIsPlaying(!isPlaying)}
+                                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                                {isPlaying
+                                    ? <Pause size={19} fill="currentColor" />
+                                    : <Play size={19} fill="currentColor" className="ml-0.5" />
+                                }
+                            </button>
+                            <button onClick={playNext}
+                                className="w-9 h-9 flex items-center justify-center text-white/60 active:scale-90 transition-all">
+                                <SkipForward size={20} fill="currentColor" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

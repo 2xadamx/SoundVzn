@@ -642,29 +642,54 @@ export const MetadataEngine = {
         }
 
         // Resolver directo si ya tenemos YouTube ID
+        // Strategy: Try proxy first (better autoplay), fall back to iframe if proxy fails
         const directId = metadata.externalIds?.youtubeId || (metadata.format === 'YouTube' && typeof metadata.id === 'string' ? metadata.id : null);
         if (directId && directId.length === 11) {
-            console.log(`[MetadataEngine] Using known YouTube ID: ${directId}`);
-            return {
-                id: directId,
-                title: metadata.title || 'YouTube Track',
-                artist: metadata.artist || 'Unknown Artist',
-                album: metadata.album || 'SoundVizion Stream',
-                duration: metadata.duration || 0,
-                filePath: `${BACKEND_URL}/api/youtube/stream/${directId}/proxy`,
-                format: 'YouTube',
-                bitrate: 192,
-                sampleRate: 48000,
-                artwork: metadata.artwork?.large || metadata.artwork?.medium || '',
-                favorite: false,
-                addedDate: new Date().toISOString(),
-                playCount: 0,
-                externalIds: {
-                    spotify: metadata.externalIds?.spotify,
-                    isrc: metadata.isrc,
-                    youtubeId: directId
-                }
-            };
+            console.log(`[MetadataEngine] Resolving YouTube: ${directId}`);
+            
+            // Try proxy endpoint first — better autoplay support
+            const proxyUrl = `${BACKEND_URL}/api/youtube/stream/${directId}/proxy`;
+            try {
+                const check = await fetch(`${BACKEND_URL}/api/youtube/stream/${directId}/preload`, {
+                    signal: AbortSignal.timeout(3000),
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('svzn_token') || ''}` }
+                });
+                const proxyAvailable = check.ok;
+                
+                return {
+                    id: directId,
+                    title: metadata.title || 'YouTube Track',
+                    artist: metadata.artist || 'Unknown Artist',
+                    album: metadata.album || 'SoundVizion Stream',
+                    duration: metadata.duration || 0,
+                    // Use proxy if available, else empty = iframe
+                    filePath: proxyAvailable ? proxyUrl : '',
+                    format: 'YouTube',
+                    bitrate: 192, sampleRate: 48000,
+                    artwork: metadata.artwork?.large || metadata.artwork?.medium || '',
+                    favorite: false,
+                    addedDate: new Date().toISOString(),
+                    playCount: 0,
+                    externalIds: { spotify: metadata.externalIds?.spotify, isrc: metadata.isrc, youtubeId: directId }
+                };
+            } catch {
+                // Proxy check failed or timeout — use iframe
+                return {
+                    id: directId,
+                    title: metadata.title || 'YouTube Track',
+                    artist: metadata.artist || 'Unknown Artist',
+                    album: metadata.album || 'SoundVizion Stream',
+                    duration: metadata.duration || 0,
+                    filePath: '',
+                    format: 'YouTube',
+                    bitrate: 192, sampleRate: 48000,
+                    artwork: metadata.artwork?.large || metadata.artwork?.medium || '',
+                    favorite: false,
+                    addedDate: new Date().toISOString(),
+                    playCount: 0,
+                    externalIds: { spotify: metadata.externalIds?.spotify, isrc: metadata.isrc, youtubeId: directId }
+                };
+            }
         }
 
         // const previewUrl = metadata.previewUrl ?? metadata.preview_url;
@@ -692,26 +717,31 @@ export const MetadataEngine = {
                 }) || ytResults[0];
 
                 if (yt?.videoId) {
-                    console.log(`[MetadataEngine] Found YouTube match: ${yt.videoId} ("${yt.title}") for query: "${query}"`);
+                    console.log(`[MetadataEngine] Found YouTube match: ${yt.videoId} for query: "${query}"`);
+                    const proxyUrl = `${BACKEND_URL}/api/youtube/stream/${yt.videoId}/proxy`;
+                    let useProxy = false;
+                    try {
+                        const check = await fetch(`${BACKEND_URL}/api/youtube/stream/${yt.videoId}/preload`, {
+                            signal: AbortSignal.timeout(3000),
+                            headers: { 'Authorization': `Bearer ${localStorage.getItem('svzn_token') || ''}` }
+                        });
+                        useProxy = check.ok;
+                    } catch {}
+                    
                     return {
                         id: yt.videoId,
                         title: metadata.title || yt.title,
                         artist: metadata.artist || yt.artist,
                         album: metadata.album || 'SoundVizion Stream',
                         duration: metadata.duration || 0,
-                        filePath: `${BACKEND_URL}/api/youtube/stream/${yt.videoId}/proxy`,
+                        filePath: useProxy ? proxyUrl : '',
                         format: 'YouTube',
-                        bitrate: 192,
-                        sampleRate: 48000,
+                        bitrate: 192, sampleRate: 48000,
                         artwork: metadata.artwork?.large || metadata.artwork?.medium || yt.thumbnail,
                         favorite: false,
                         addedDate: new Date().toISOString(),
                         playCount: 0,
-                        externalIds: {
-                            spotify: metadata.externalIds?.spotify,
-                            isrc: metadata.isrc,
-                            youtubeId: yt.videoId
-                        }
+                        externalIds: { spotify: metadata.externalIds?.spotify, isrc: metadata.isrc, youtubeId: yt.videoId }
                     };
                 }
             }

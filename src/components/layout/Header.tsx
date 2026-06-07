@@ -117,13 +117,37 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate, currentView = '' }) 
                 </AnimatePresence>
             </div>
 
-            {/* Mobile: logo + search icon */}
-            <div className="flex sm:hidden items-center gap-3 flex-1">
-                <img src="/logo-banner.jpg" alt="SoundVzn" className="h-6 object-contain" />
-                <button onClick={() => onNavigate('search')}
-                    className="p-2 text-white/40 hover:text-white transition-colors">
-                    <Search size={18} />
-                </button>
+            {/* Mobile: logo centrado + acciones mínimas */}
+            <div className="flex sm:hidden items-center justify-between w-full">
+                <img src="/logo-banner.jpg" alt="SoundVzn" className="h-7 object-contain" />
+                <div className="flex items-center gap-1">
+                    <button onClick={() => onNavigate('search')}
+                        className="p-2.5 text-white/40 hover:text-white transition-colors">
+                        <Search size={20} />
+                    </button>
+                    <div className="relative">
+                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                            onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
+                            className={clsx("p-2.5 rounded-xl transition-all relative", notifOpen ? "text-white bg-white/10" : "text-white/30")}>
+                            <Bell size={20} />
+                            <div className="absolute top-1.5 right-1.5 pointer-events-none" id="notification-badge-anchor-mobile" />
+                        </motion.button>
+                        <AnimatePresence>{notifOpen && <NotificationsPopover onClose={() => setNotifOpen(false)} />}</AnimatePresence>
+                    </div>
+                    <div className="relative">
+                        <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                            onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); }}
+                            className="w-8 h-8 rounded-full bg-white/10 overflow-hidden border border-white/10 shrink-0">
+                            {profile.avatar
+                                ? <img src={profile.avatar} className="w-full h-full rounded-full object-cover" alt="" />
+                                : <div className="w-full h-full rounded-full bg-white/5 flex items-center justify-center text-xs font-bold text-white/60">{(profile.name || 'U')[0]}</div>
+                            }
+                        </motion.button>
+                        <AnimatePresence>
+                            {profileOpen && <ProfilePopover profile={profile} onNavigate={onNavigate} onClose={() => setProfileOpen(false)} />}
+                        </AnimatePresence>
+                    </div>
+                </div>
             </div>
 
             {/* Actions */}
@@ -158,8 +182,8 @@ export const Header: React.FC<HeaderProps> = ({ onNavigate, currentView = '' }) 
                     </div>
                 </div>
 
-                {/* Mobile: only bell + avatar */}
-                <div className="flex sm:hidden items-center gap-2">
+                {/* Mobile: bell hidden in favor of new mobile header above */}
+                <div className="hidden">
                     <div className="relative">
                         <button onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
                             className="p-2 text-white/30 hover:text-white transition-colors relative">

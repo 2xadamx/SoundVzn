@@ -1,11 +1,9 @@
-// En desarrollo, Vite proxea /api → localhost:3000 automáticamente
-// En producción, usar VITE_BACKEND_URL si se define, o el mismo origen si el backend y frontend están en el mismo servidor
+// En desarrollo, Vite proxea /api → backend automáticamente (baseURL = '')
+// En producción, VITE_BACKEND_URL debe apuntar al backend de Render/Railway
 export const BACKEND_URL =
   import.meta.env?.DEV
     ? ''
-    : (import.meta.env?.VITE_BACKEND_URL ||
-       import.meta.env?.VITE_API_URL ||
-       window.location.origin);
+    : (import.meta.env?.VITE_BACKEND_URL || import.meta.env?.VITE_API_URL || '');
 
 export interface MusicAPIConfig {
   spotify: {

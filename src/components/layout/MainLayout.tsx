@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import clsx from 'clsx';
 import { initAudioProcessor } from '../../utils/audioProcessor';
 import { Home, Search, Users, ListMusic, User } from 'lucide-react';
+import { MediaSessionManager } from '../player/MediaSessionManager';
 
 interface MainLayoutProps {
     children?: React.ReactNode;
@@ -216,6 +217,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
       />
 
       <YouTubeHybridPlayer />
+      <MediaSessionManager />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar — hidden on mobile */}
@@ -235,7 +237,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
 
           {/* Contenido con padding adecuado para móviles */}
           <div className="flex-1 overflow-y-auto px-4 sm:px-8 sm:pt-4 pt-3 scroll-smooth custom-scrollbar"
-            style={{ paddingBottom: isPlaying ? '180px' : '80px' }}
+            style={{ 
+              // Mobile: nav (58px) + mini-player (74px) + gap (8px) + safe area = ~148px
+              // Desktop: player (~88px)
+              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 158px)'
+            }}
           >
             {children}
           </div>
@@ -271,17 +277,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
 
       {/* PlayerBar para móviles y desktop */}
       {!isLyricsOpen && !isGlassOpen && (
-        <div className={clsx(
-          "fixed bottom-16 sm:bottom-0 left-0 right-0 z-[100]",
-          !isPlaying && "sm:fixed sm:bottom-0 sm:z-[100]"
-        )}>
-          <PlayerBar onNavigate={onNavigate} />
-        </div>
+        <PlayerBar onNavigate={onNavigate} />
       )}
 
-      {/* ── Mobile Bottom Navigation Bar ── */}
+      {/* ── Mobile Bottom Navigation Bar — estilo Apple Music/Spotify ── */}
       {!isLyricsOpen && !isGlassOpen && (
-        <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-[99] bg-black/90 backdrop-blur-xl border-t border-white/10 px-3 py-2 flex items-center justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+        <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-[140] bg-black/90 backdrop-blur-2xl border-t border-white/[0.06]"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="flex items-center justify-around px-2 py-1">
           {([
             { id: 'home', icon: Home, label: 'Inicio' },
             { id: 'search', icon: Search, label: 'Buscar' },
@@ -292,20 +295,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
             const active = currentView === item.id;
             return (
               <button key={item.id} onClick={() => onNavigate(item.id)}
-                className={clsx(
-                  'flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all active:scale-95',
-                  active ? 'text-white' : 'text-white/30 hover:text-white/70'
-                )}>
-                <item.icon size={22} strokeWidth={active ? 2.5 : 1.8} />
-                <span className={clsx('text-[10px] font-bold uppercase tracking-widest', active ? 'text-white' : 'text-white/40')}>
+                className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all active:scale-95 min-w-[52px]">
+                <item.icon size={23} strokeWidth={active ? 2.5 : 1.5}
+                  className={active ? 'text-white' : 'text-white/35'} />
+                <span className={clsx('text-[9px] font-bold tracking-tight',
+                  active ? 'text-white' : 'text-white/30')}>
                   {item.label}
                 </span>
-                {active && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-white mt-0.5" />
-                )}
               </button>
             );
           })}
+          </div>
         </nav>
       )}
     </div>

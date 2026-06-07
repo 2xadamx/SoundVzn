@@ -838,7 +838,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
                         queue: updatedQueue, 
                         currentTrack: playable, 
                         playbackSource: source,
-                        youtubeId: source === 'iframe' ? yid : get().youtubeId,
+                        // Always update youtubeId when available
+                        youtubeId: yid || (source === 'iframe' ? get().youtubeId : null),
                         isPlaying: true
                     });
                 } else {
@@ -929,7 +930,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             queue: updatedQueue, 
             currentTrack: resolved, 
             playbackSource: source,
-            youtubeId: source === 'iframe' ? yid : get().youtubeId 
+            youtubeId: yid || (source === 'iframe' ? get().youtubeId : null)
         });
         
         const { updatePlayCount } = await import('../utils/database');

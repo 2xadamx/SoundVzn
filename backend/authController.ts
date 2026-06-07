@@ -401,7 +401,7 @@ export class AuthController {
                 username: user.username
             },
             this.secret,
-            { expiresIn: '7d' }
+            { expiresIn: '30d' }  // 30 days — users don't want to re-login constantly
         );
     }
 

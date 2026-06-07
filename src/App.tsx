@@ -38,26 +38,22 @@ import { usePlayerStore } from './store/player';
 import { useAuth } from './store/auth';
 import { socialService } from './utils/socialService';
 
-// ── BOOTLOADER: SYSTEM SYNCHRONIZATION (V2.1.0) ──────────────────────────
+// ── BOOTLOADER: SYSTEM SYNCHRONIZATION ──────────────────────────────────────
+// NOTE: Only clears non-auth data. Tokens and user session are NEVER cleared here.
 const SYNC_VERSION = 'v14_clear_stale_tokens';
 const clearSoundVznStorage = () => {
-  const prefixes = ['svzn_', 'soundvzn_', 'auth_', 'google_', 'lastfm_'];
+  // Only clear non-critical caches, never tokens or user data
+  const safeToClear = ['soundvzn_api_config', 'soundvzn_cache_', 'svzn_recent_'];
   Object.keys(localStorage)
-    .filter((key) => {
-      if (key === 'svzn_user' || key === 'svzn_id' || key === 'svzn_sync_token') return false;
-      return prefixes.some((prefix) => key.startsWith(prefix));
-    })
+    .filter((key) => safeToClear.some((prefix) => key.startsWith(prefix)))
     .forEach((key) => localStorage.removeItem(key));
 };
 
 if (localStorage.getItem('svzn_sync_token') !== SYNC_VERSION) {
-  console.info('[Bootloader] System update detected. Synchronizing local state...');
+  console.info('[Bootloader] System update detected. Clearing non-critical caches...');
   clearSoundVznStorage();
-  try {
-     indexedDB.deleteDatabase('soundvzn_web');
-  } catch(e) {}
   localStorage.setItem('svzn_sync_token', SYNC_VERSION);
-  window.location.reload();
+  // Do NOT reload — that would interrupt any active session
 }
 
 const IS_ELECTRON = !!(window as any).electron;
