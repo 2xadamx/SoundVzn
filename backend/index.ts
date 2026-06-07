@@ -63,43 +63,9 @@ const app = express();
 const httpServer = createServer(app);
 const socketService = new SocketService(httpServer);
 
-// CORS Configuration — dinámica para soportar dominio de producción
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:5200',
-  'http://127.0.0.1:5200',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-];
-try {
-  // Soporte para múltiples URLs (separadas por coma)
-  if (process.env.FRONTEND_URL) {
-    (process.env.FRONTEND_URL || '').split(',').forEach(url => {
-      const trimmedUrl = url.trim();
-      if (trimmedUrl && !allowedOrigins.includes(trimmedUrl)) {
-        allowedOrigins.push(trimmedUrl);
-      }
-    });
-  }
-  // Soporte para subdominios Cloud Run / producción
-  if (process.env.PRODUCTION_URL) {
-    (process.env.PRODUCTION_URL || '').split(',').forEach(url => {
-      const trimmedUrl = url.trim();
-      if (trimmedUrl && !allowedOrigins.includes(trimmedUrl)) {
-        allowedOrigins.push(trimmedUrl);
-      }
-    });
-  }
-} catch (e) {
-  console.error('[CORS] Error parsing frontend URLs:', e);
-}
-
+// CORS Configuration — permitir cualquier origen para evitar problemas
 app.use(cors({
-  origin: (origin, callback) => {
-    // Permitir CUALQUIER origen para evitar problemas con nuevas URLs
-    return callback(null, true);
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-SoundVzn-Identity']
