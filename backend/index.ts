@@ -72,12 +72,23 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
 ];
-if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_URL)) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
+// Soporte para múltiples URLs (separadas por coma)
+if (process.env.FRONTEND_URL) {
+  process.env.FRONTEND_URL.split(',').forEach(url => {
+    const trimmedUrl = url.trim();
+    if (trimmedUrl && !allowedOrigins.includes(trimmedUrl)) {
+      allowedOrigins.push(trimmedUrl);
+    }
+  });
 }
 // Soporte para subdominios Cloud Run / producción
-if (process.env.PRODUCTION_URL && !allowedOrigins.includes(process.env.PRODUCTION_URL)) {
-  allowedOrigins.push(process.env.PRODUCTION_URL);
+if (process.env.PRODUCTION_URL) {
+  process.env.PRODUCTION_URL.split(',').forEach(url => {
+    const trimmedUrl = url.trim();
+    if (trimmedUrl && !allowedOrigins.includes(trimmedUrl)) {
+      allowedOrigins.push(trimmedUrl);
+    }
+  });
 }
 
 app.use(cors({
