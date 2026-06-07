@@ -63,13 +63,23 @@ const app = express();
 const httpServer = createServer(app);
 const socketService = new SocketService(httpServer);
 
+// Primero: Manejar OPTIONS preflight para CORS
+app.options('*', cors({ origin: true, credentials: true }));
+
 // CORS Configuration — permitir cualquier origen para evitar problemas
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    return callback(null, true);
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-SoundVzn-Identity']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-SoundVzn-Identity', 'Cookie']
 }));
+
+// Endpoint de health rápido para mantener la instancia de Render activa
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: Date.now() });
+});
 
 app.use(cookieParser());
 
