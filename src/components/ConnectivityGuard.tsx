@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WifiOff, RefreshCw, Zap } from 'lucide-react';
+import { BACKEND_URL } from '@utils/apiConfig';
 
 /**
  * Enterprise Connectivity Guard
@@ -12,7 +13,7 @@ export const ConnectivityGuard: React.FC = () => {
 
     const checkHealth = async () => {
         try {
-            const res = await fetch('/api/health', { cache: 'no-store' });
+            const res = await fetch(`${BACKEND_URL}/api/health`, { cache: 'no-store' });
             setIsOffline(!res.ok);
         } catch (err) {
             setIsOffline(true);

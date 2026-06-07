@@ -1,3 +1,5 @@
+import { BACKEND_URL } from '@utils/apiConfig';
+
 const ACCESS_KEY = 'svzn_token';
 const REFRESH_KEY = 'svzn_refresh';
 const LEGACY_KEY = 'auth_access_token';
@@ -41,7 +43,7 @@ export async function refreshAccessToken(): Promise<string | null> {
         if (!refresh) return null;
 
         try {
-            const res = await fetch('/api/auth/refresh', {
+            const res = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -84,7 +86,7 @@ export async function tryDevSessionRestore(): Promise<string | null> {
     if (!email) return null;
 
     try {
-        const res = await fetch('/api/auth/dev-restore', {
+        const res = await fetch(`${BACKEND_URL}/api/auth/dev-restore`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -133,7 +135,19 @@ function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, ms =
     return fetch(input, { ...init, signal: mergedSignal }).finally(() => clearTimeout(tid));
 }
 
+// Helper to prepend BACKEND_URL to relative paths
+function resolveUrl(input: RequestInfo | URL): RequestInfo | URL {
+    if (typeof input === 'string' && input.startsWith('/')) {
+        return `${BACKEND_URL}${input}`;
+    }
+    if (input instanceof URL && input.origin === window.location.origin && input.pathname.startsWith('/')) {
+        return new URL(`${BACKEND_URL}${input.pathname}${input.search}${input.hash}`);
+    }
+    return input;
+}
+
 export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const resolvedUrl = resolveUrl(input);
     const buildInit = (token: string | null) => {
         const headers = new Headers(init.headers);
         headers.set('X-SoundVzn-Identity', 'SVZN-CORE-AUTH');
@@ -142,12 +156,12 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
         return { ...init, headers };
     };
 
-    let response = await fetchWithTimeout(input, buildInit(getAccessToken()), 10000);
+    let response = await fetchWithTimeout(resolvedUrl, buildInit(getAccessToken()), 10000);
     if (response.status !== 401 && response.status !== 403) return response;
 
     const refreshed = await refreshAccessToken();
     if (refreshed) {
-        response = await fetchWithTimeout(input, buildInit(refreshed), 10000);
+        response = await fetchWithTimeout(resolvedUrl, buildInit(refreshed), 10000);
         if (response.ok || (response.status !== 401 && response.status !== 403)) {
             return response;
         }
@@ -155,21 +169,22 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
 
     const restored = await tryDevSessionRestore();
     if (restored) {
-        response = await fetchWithTimeout(input, buildInit(restored), 10000);
+        response = await fetchWithTimeout(resolvedUrl, buildInit(restored), 10000);
         if (response.ok || (response.status !== 401 && response.status !== 403)) {
             return response;
         }
     }
 
     clearAccessToken();
-    response = await fetchWithTimeout(input, buildInit(null), 10000);
+    response = await fetchWithTimeout(resolvedUrl, buildInit(null), 10000);
     return response;
 }
 
 /** Fetch sin credenciales — proxies públicos (Deezer, Spotify browse). */
 export async function publicFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const resolvedUrl = resolveUrl(input);
     const headers = new Headers(init.headers);
     headers.set('X-SoundVzn-Identity', 'SVZN-CORE-AUTH');
     headers.delete('Authorization');
-    return fetchWithTimeout(input, { ...init, headers }, 8000);
+    return fetchWithTimeout(resolvedUrl, { ...init, headers }, 8000);
 }

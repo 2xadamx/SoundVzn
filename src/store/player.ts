@@ -765,7 +765,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       try {
         const token = localStorage.getItem('svzn_token');
         if (token) {
-          fetch('/api/user/scrobble', {
+          fetch(`${BACKEND_URL}/api/user/scrobble`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({
