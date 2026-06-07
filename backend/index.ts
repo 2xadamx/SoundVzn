@@ -760,6 +760,22 @@ app.post('/api/user/scrobble', authenticateToken, (req: any, res: Response) => {
 });
 
 const PORT = process.env.PORT || 5200;
+
+// Keep-alive para Render: pinguea el propio endpoint de health cada 4 minutos para evitar que se apague la instancia
+const isRender = process.env.RENDER === 'true' || !!process.env.RENDER_SERVICE_ID;
+if (isRender) {
+  console.log('[Keep-Alive] Render detectado, iniciando keep-alive cada 4 minutos...');
+  setInterval(async () => {
+    try {
+      const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+      await axios.get(`${selfUrl}/api/health`, { timeout: 5000 });
+      console.log('[Keep-Alive] Ping successful:', new Date().toISOString());
+    } catch (e: any) {
+      console.warn('[Keep-Alive] Ping failed:', e.message);
+    }
+  }, 4 * 60 * 1000);
+}
+
 httpServer.listen(PORT, () => {
   console.log(`[SoundVzn] Enterprise Core ONLINE on port ${PORT}`);
   Logger.info(`[System] Backend frequency established on ${PORT}`);

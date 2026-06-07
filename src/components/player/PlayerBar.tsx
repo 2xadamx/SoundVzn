@@ -80,12 +80,12 @@ export const PlayerBar: React.FC<{ onNavigate?: (view: string, params?: any) => 
     if (!currentTrack) return null;
 
     return (
-        <div className="fixed bottom-16 sm:bottom-0 left-0 right-0 z-[100] select-none">
+        <div className="select-none">
             {/* ── MOBILE PLAYER (sm and below) ── */}
-            <div className="sm:hidden bg-black/90 backdrop-blur-3xl border-t border-white/[0.06] shadow-[0_-8px_30px_rgba(0,0,0,0.6)]">
+            <div className="sm:hidden bg-black/95 backdrop-blur-2xl border-t border-white/10 shadow-[0_-4px_30px_rgba(0,0,0,0.7)]">
                 {/* Progress bar */}
-                <div className="relative h-[3px] bg-white/10 group/prog cursor-pointer">
-                    <div className="h-full bg-white/80 transition-all" style={{ width: `${progress}%` }} />
+                <div className="relative h-[4px] bg-white/10 group/prog cursor-pointer">
+                    <div className="h-full bg-white/90 transition-all" style={{ width: `${progress}%` }} />
                     <input type="range" min="0" max="100" step="0.1"
                         value={progress || 0}
                         onTouchStart={() => setIsSeeking(true)}
@@ -94,49 +94,49 @@ export const PlayerBar: React.FC<{ onNavigate?: (view: string, params?: any) => 
                         onMouseUp={e => commitSeek(parseFloat(e.currentTarget.value))}
                         onTouchEnd={e => commitSeek(parseFloat(e.currentTarget.value))}
                         className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-                        style={{ height: '16px', top: '-6px' }}
+                        style={{ height: '20px', top: '-8px' }}
                     />
                 </div>
 
-                <div className="flex items-center gap-3 px-4 py-4">
+                <div className="flex items-center gap-3 px-4 py-3">
                     {/* Artwork */}
                     <button onClick={async () => {
                             setIsGlassOpen(true);
                             try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (e) { console.warn(e); }
                         }}
-                        className="w-11 h-11 rounded-xl overflow-hidden shrink-0 bg-white/5 border border-white/10 shadow-lg">
+                        className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 bg-white/5 border border-white/10 shadow-xl">
                         {currentTrack.artwork && !isResolving
                             ? <img src={currentTrack.artwork} className="w-full h-full object-cover" alt="" />
                             : <div className="w-full h-full flex items-center justify-center">
-                                <Mic2 size={14} className={clsx('text-white/20', isResolving && 'animate-pulse')} />
+                                <Mic2 size={16} className={clsx('text-white/20', isResolving && 'animate-pulse')} />
                               </div>
                         }
                     </button>
 
                     {/* Track info */}
                     <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-black text-white truncate leading-tight">{currentTrack.title}</p>
-                        <p className="text-[11px] text-white/30 truncate">{normalizeArtistName(currentTrack.artist)}</p>
+                        <p className="text-sm font-black text-white truncate leading-tight">{currentTrack.title}</p>
+                        <p className="text-xs text-white/40 truncate">{normalizeArtistName(currentTrack.artist)}</p>
                     </div>
 
                     {/* Mobile controls */}
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                         <button onClick={() => toggleFavorite()}
-                            className={clsx('p-2 transition-all active:scale-90', currentTrack.favorite ? 'text-rose-400' : 'text-white/20')}>
-                            <Heart size={18} className={currentTrack.favorite ? 'fill-current' : ''} />
+                            className={clsx('p-2 transition-all active:scale-90', currentTrack.favorite ? 'text-rose-400' : 'text-white/25 hover:text-white/60')}>
+                            <Heart size={20} className={currentTrack.favorite ? 'fill-current' : ''} />
                         </button>
-                        <button onClick={playPrevious} className="p-2 text-white/40 active:scale-90 transition-all">
-                            <SkipBack size={20} fill="currentColor" />
+                        <button onClick={playPrevious} className="p-2 text-white/60 active:scale-90 transition-all hover:text-white">
+                            <SkipBack size={22} fill="currentColor" />
                         </button>
                         <button onClick={() => setIsPlaying(!isPlaying)}
-                            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                            className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-xl active:scale-95 transition-all hover:scale-105">
                             {isPlaying
-                                ? <Pause size={18} fill="currentColor" />
-                                : <Play size={18} fill="currentColor" className="ml-0.5" />
+                                ? <Pause size={20} fill="currentColor" />
+                                : <Play size={20} fill="currentColor" className="ml-0.5" />
                             }
                         </button>
-                        <button onClick={playNext} className="p-2 text-white/40 active:scale-90 transition-all">
-                            <SkipForward size={20} fill="currentColor" />
+                        <button onClick={playNext} className="p-2 text-white/60 active:scale-90 transition-all hover:text-white">
+                            <SkipForward size={22} fill="currentColor" />
                         </button>
                     </div>
                 </div>
