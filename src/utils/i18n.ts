@@ -8,6 +8,8 @@ export type TranslationKey =
   | 'nav.library'
   | 'nav.albums'
   | 'nav.artists'
+  | 'nav.stats'
+  | 'nav.liveRooms'
   | 'nav.settings'
   | 'nav.section.collection'
   | 'header.searchPlaceholder'
@@ -48,7 +50,15 @@ export type TranslationKey =
   | 'notifications.favorites.added.title'
   | 'notifications.favorites.added.body'
   | 'notifications.favorites.removed.title'
-  | 'notifications.favorites.removed.body';
+  | 'notifications.favorites.removed.body'
+  | 'notifications.system.discoveryEnabled.title'
+  | 'notifications.system.discoveryEnabled.body'
+  | 'notifications.system.discoveryDisabled.title'
+  | 'notifications.system.discoveryDisabled.body'
+  | 'notifications.moodLock.enabled.title'
+  | 'notifications.moodLock.enabled.body'
+  | 'notifications.moodLock.disabled.title'
+  | 'notifications.moodLock.disabled.body';
 
 const translations: Record<Language, Record<TranslationKey, string>> = {
   es: {
@@ -59,6 +69,8 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'nav.library': 'Tu Música',
     'nav.albums': 'Discos',
     'nav.artists': 'Artistas',
+    'nav.stats': 'Estadísticas',
+    'nav.liveRooms': 'Sesiones en Vivo',
     'nav.settings': 'Configuración',
     'nav.section.collection': 'Colección',
     'header.searchPlaceholder': 'Buscar artistas, canciones, álbumes...',
@@ -100,6 +112,14 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'notifications.favorites.added.body': '{track} se agregó a tus favoritos.',
     'notifications.favorites.removed.title': 'Favorito eliminado',
     'notifications.favorites.removed.body': '{track} ya no está en Favoritos.',
+    'notifications.system.discoveryEnabled.title': 'Modo Descubrimiento activo',
+    'notifications.system.discoveryEnabled.body': 'Se añadirán canciones similares a la cola automáticamente.',
+    'notifications.system.discoveryDisabled.title': 'Modo Descubrimiento apagado',
+    'notifications.system.discoveryDisabled.body': 'La cola se detendrá al finalizar las canciones actuales.',
+    'notifications.moodLock.enabled.title': 'Fijación de estado activada',
+    'notifications.moodLock.enabled.body': 'Se ha bloqueado la cola en el estado de ánimo: {mood}.',
+    'notifications.moodLock.disabled.title': 'Fijación de estado desactivada',
+    'notifications.moodLock.disabled.body': 'La cola volverá a responder dinámicamente.',
   },
   en: {
     'nav.home': 'Home',
@@ -109,6 +129,8 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'nav.library': 'Your Music',
     'nav.albums': 'Albums',
     'nav.artists': 'Artists',
+    'nav.stats': 'Your Stats',
+    'nav.liveRooms': 'Live Rooms',
     'nav.settings': 'Settings',
     'nav.section.collection': 'Collection',
     'header.searchPlaceholder': 'Search artists, songs, albums...',
@@ -150,6 +172,14 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'notifications.favorites.added.body': '{track} was added to your favorites.',
     'notifications.favorites.removed.title': 'Removed from favorites',
     'notifications.favorites.removed.body': '{track} is no longer marked as favorite.',
+    'notifications.system.discoveryEnabled.title': 'Discovery Mode active',
+    'notifications.system.discoveryEnabled.body': 'Similar tracks will be added to the queue automatically.',
+    'notifications.system.discoveryDisabled.title': 'Discovery Mode off',
+    'notifications.system.discoveryDisabled.body': 'Queue will stop after the current tracks.',
+    'notifications.moodLock.enabled.title': 'Mood Lock enabled',
+    'notifications.moodLock.enabled.body': 'Queue locked to mood: {mood}.',
+    'notifications.moodLock.disabled.title': 'Mood Lock disabled',
+    'notifications.moodLock.disabled.body': 'Queue will adapt dynamically again.',
   },
   fr: {
     'nav.home': 'Accueil',
@@ -159,6 +189,8 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'nav.library': 'Votre musique',
     'nav.albums': 'Albums',
     'nav.artists': 'Artistes',
+    'nav.stats': 'Statistiques',
+    'nav.liveRooms': 'Sessions en Direct',
     'nav.settings': 'Paramètres',
     'nav.section.collection': 'Collection',
     'header.searchPlaceholder': 'Rechercher artistes, titres, albums...',
@@ -200,6 +232,14 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'notifications.favorites.added.body': '{track} a été ajouté à vos favoris.',
     'notifications.favorites.removed.title': 'Supprimé des favoris',
     'notifications.favorites.removed.body': '{track} ne fait plus partie des favoris.',
+    'notifications.system.discoveryEnabled.title': 'Mode Découverte actif',
+    'notifications.system.discoveryEnabled.body': 'Des titres similaires seront ajoutés à la file automatiquement.',
+    'notifications.system.discoveryDisabled.title': 'Mode Découverte désactivé',
+    'notifications.system.discoveryDisabled.body': 'La file s’arrêtera après les titres actuels.',
+    'notifications.moodLock.enabled.title': 'Verrouillage d’ambiance activé',
+    'notifications.moodLock.enabled.body': 'File d’attente verrouillée sur l’ambiance : {mood}.',
+    'notifications.moodLock.disabled.title': 'Verrouillage d’ambiance désactivé',
+    'notifications.moodLock.disabled.body': 'La file d’attente s’adaptera à nouveau dynamiquement.',
   },
   de: {
     'nav.home': 'Start',
@@ -209,6 +249,8 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'nav.library': 'Meine Musik',
     'nav.albums': 'Alben',
     'nav.artists': 'Künstler',
+    'nav.stats': 'Statistiken',
+    'nav.liveRooms': 'Live-Räume',
     'nav.settings': 'Einstellungen',
     'nav.section.collection': 'Sammlung',
     'header.searchPlaceholder': 'Künstler, Songs, Alben suchen...',
@@ -250,6 +292,14 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
     'notifications.favorites.added.body': '{track} wurde zu deinen Favoriten hinzugefügt.',
     'notifications.favorites.removed.title': 'Aus Favoriten entfernt',
     'notifications.favorites.removed.body': '{track} ist nicht mehr in deinen Favoriten.',
+    'notifications.system.discoveryEnabled.title': 'Entdeckungsmodus aktiv',
+    'notifications.system.discoveryEnabled.body': 'Ähnliche Titel werden automatisch zur Warteschlange hinzugefügt.',
+    'notifications.system.discoveryDisabled.title': 'Entdeckungsmodus aus',
+    'notifications.system.discoveryDisabled.body': 'Die Wiedergabe stoppt nach den aktuellen Titeln.',
+    'notifications.moodLock.enabled.title': 'Stimmungs-Sperre aktiviert',
+    'notifications.moodLock.enabled.body': 'Warteschlange auf Stimmung gesperrt: {mood}.',
+    'notifications.moodLock.disabled.title': 'Stimmungs-Sperre deaktiviert',
+    'notifications.moodLock.disabled.body': 'Warteschlange passt sich wieder dynamisch an.',
   },
 };
 

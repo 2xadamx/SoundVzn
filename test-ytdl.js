@@ -18,19 +18,14 @@ async function test(videoId) {
     console.log('\nTesting youtube-dl-exec...');
     try {
         const raw = await youtubedl(`https://www.youtube.com/watch?v=${videoId}`, {
-            dumpJson: true,
-            format: 'bestaudio',
+            listFormats: true,
             noCheckCertificates: true,
             noWarnings: true,
         });
-        if (raw && raw.url) {
-            console.log('youtube-dl-exec SUCCESS:', raw.url.substring(0, 80) + '...');
-        } else {
-            console.log('youtube-dl-exec found no URL');
-        }
+        console.log('youtube-dl-exec SUCCESS:', raw);
     } catch (e) {
         console.error('youtube-dl-exec ERROR:', e.message);
     }
 }
 
-test('kJQP7kiw5Fk');
+test('dQw4w9WgXcQ');

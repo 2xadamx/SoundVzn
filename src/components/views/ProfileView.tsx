@@ -1,645 +1,681 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { User, LogOut, Crown, Music, Clock, Heart, BarChart3, Camera, Edit2, Check, X, Image as ImageIcon, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    LogOut, Crown, Camera, Plus, Disc, Music,
+    Heart, UserPlus, X, ArrowLeft,
+    Search, UserCheck, Users, Share2, Link, Check,
+    Headphones, Radio, BarChart3, Edit3
+} from 'lucide-react';
+import { updateProfile as dbUpdateProfile, getAllTracks, getAllPlaylists } from '@utils/database';
+import { socialService } from '../../utils/socialService';
+import { useAuth } from '@store/auth';
+import { usePlayerStore } from '@store/player';
+import { ProfileAnthem } from '../profile/ProfileAnthem';
+import { safeImageSrc } from '@utils/imageUrl';
 import clsx from 'clsx';
-import { getProfile, updateProfile } from '@utils/database';
-import { BACKEND_URL } from '@utils/apiConfig';
-import StripeEmbeddedCheckout from '../StripeEmbeddedCheckout';
-import axios from 'axios';
 
-const StatCard: React.FC<{ icon: React.ElementType; label: string; value: string | number; color?: string }> = ({ icon: Icon, label, value, color = "primary" }) => (
-    <motion.div
-        whileHover={{ scale: 1.05, y: -4 }}
-        className="bg-white/5 backdrop-blur-[30px] border border-white/10 rounded-[28px] p-6 flex flex-col items-center text-center shadow-xl hover:shadow-[0_20px_40px_rgba(0,0,0,0.3)] hover:border-white/20 transition-all duration-500 group"
-    >
-        <div className={clsx(
-            "w-14 h-14 rounded-2xl flex items-center justify-center mb-4 shadow-inner transition-all duration-500 group-hover:scale-110",
-            color === "primary" ? "bg-primary/20 text-primary shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]" : "bg-secondary/20 text-secondary shadow-[0_0_20px_rgba(var(--secondary-rgb),0.3)]"
-        )}>
-            <Icon size={24} strokeWidth={2.5} />
+// ─── Connections Modal ────────────────────────────────────────────────────────
+const ConnectionsModal: React.FC<{
+    initialTab: 'followers' | 'following' | 'friends';
+    connections: { following: any[]; followers: any[]; friends: any[] };
+    onClose: () => void;
+    onNavigate: (userId: string) => void;
+}> = ({ initialTab, connections, onClose, onNavigate }) => {
+    const [activeTab, setActiveTab] = useState(initialTab);
+    const [search, setSearch] = useState('');
+    const currentList = connections[activeTab] || [];
+    const filtered = currentList.filter(u =>
+        u.name?.toLowerCase().includes(search.toLowerCase()) ||
+        u.username?.toLowerCase().includes(search.toLowerCase())
+    );
+    const tabs = [
+        { id: 'following' as const, label: 'Siguiendo', count: connections.following.length },
+        { id: 'followers' as const, label: 'Seguidores', count: connections.followers.length },
+        { id: 'friends'   as const, label: 'Amigos',     count: connections.friends.length },
+    ];
+    return (
+        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" onClick={onClose}>
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            <motion.div
+                initial={{ opacity: 0, y: 40 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 40 }}
+                onClick={e => e.stopPropagation()}
+                className="relative w-full sm:w-[520px] max-h-[85vh] bg-[#0c0c0e] border border-white/10 rounded-t-[32px] sm:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
+            >
+                {/* Handle bar (mobile) */}
+                <div className="flex justify-center pt-3 pb-1 sm:hidden">
+                    <div className="w-10 h-1 bg-white/20 rounded-full" />
+                </div>
+                {/* Tabs */}
+                <div className="flex items-center border-b border-white/[0.06] px-2 pt-2 sm:pt-4">
+                    {tabs.map(t => (
+                        <button key={t.id} onClick={() => setActiveTab(t.id)}
+                            className={clsx('flex-1 py-3 text-xs font-bold tracking-widest uppercase transition-all border-b-2',
+                                activeTab === t.id ? 'text-white border-white' : 'text-white/30 border-transparent hover:text-white/60'
+                            )}>
+                            {t.label} <span className="ml-1 opacity-50">{t.count}</span>
+                        </button>
+                    ))}
+                    <button onClick={onClose} className="p-2 ml-2 text-white/30 hover:text-white shrink-0">
+                        <X size={18} />
+                    </button>
+                </div>
+                {/* Search */}
+                <div className="px-4 py-3 border-b border-white/[0.04]">
+                    <div className="relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                        <input value={search} onChange={e => setSearch(e.target.value)}
+                            placeholder="Buscar..."
+                            className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-white/20 outline-none focus:border-white/20 transition-colors" />
+                    </div>
+                </div>
+                {/* List */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {filtered.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 opacity-30">
+                            <Users size={32} className="mb-3" />
+                            <p className="text-sm font-medium">Sin resultados</p>
+                        </div>
+                    ) : filtered.map(u => (
+                        <div key={u.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors group">
+                            <button onClick={() => { onNavigate(u.id); onClose(); }}
+                                className="w-11 h-11 rounded-full overflow-hidden bg-white/5 border border-white/10 shrink-0">
+                                <img src={u.avatar || `https://api.dicebear.com/9.x/thumbs/svg?seed=${u.id}`}
+                                    className="w-full h-full object-cover" alt="" />
+                            </button>
+                            <button onClick={() => { onNavigate(u.id); onClose(); }} className="flex-1 min-w-0 text-left">
+                                <p className="text-sm font-semibold text-white/90 truncate">{u.name}</p>
+                                <p className="text-[11px] text-white/30 truncate">@{u.username || 'user'}</p>
+                            </button>
+                            <button onClick={async () => {
+                                if (activeTab !== 'followers') {
+                                    if (confirm(`¿Dejar de seguir a ${u.name}?`)) {
+                                        await socialService.removeFriend(u.id);
+                                        window.dispatchEvent(new CustomEvent('svzn_friends_updated'));
+                                    }
+                                } else {
+                                    await socialService.sendFriendRequest(u.id);
+                                }
+                            }} className={clsx('px-3 py-1.5 rounded-lg text-xs font-bold transition-all border shrink-0',
+                                activeTab === 'followers'
+                                    ? 'bg-white text-black border-white hover:bg-white/90'
+                                    : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
+                            )}>
+                                {activeTab === 'followers' ? 'Seguir' : activeTab === 'following' ? 'Siguiendo' : 'Amigo'}
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </motion.div>
         </div>
-        <p className="text-3xl font-black text-white tracking-tighter mb-1 italic">{value}</p>
-        <p className="text-[11px] font-bold text-white/40 tracking-wide">{label}</p>
-    </motion.div>
+    );
+};
+
+// ─── Stat Pill ────────────────────────────────────────────────────────────────
+const StatPill: React.FC<{ value: number; label: string; onClick?: () => void }> = ({ value, label, onClick }) => (
+    <button onClick={onClick} className="flex flex-col items-center gap-0.5 group px-3 py-1 rounded-xl hover:bg-white/5 transition-colors">
+        <span className="text-lg font-black text-white group-hover:text-primary transition-colors leading-none">{value}</span>
+        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{label}</span>
+    </button>
 );
 
-export const ProfileView: React.FC = () => {
-    const [profile, setProfile] = useState<any>(null);
-    const [storageSize, setStorageSize] = useState<number>(0);
-    const [isEditing, setIsEditing] = useState(false);
-    const [editData, setEditData] = useState<any>({});
-    const [isLoggingOut, setIsLoggingOut] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [showStripeModal, setShowStripeModal] = useState(false);
-    const [securityData, setSecurityData] = useState<any>(null);
+// ─── Playlist Mosaic ──────────────────────────────────────────────────────────
+const extractArtworkUrl = (art: any): string | null => {
+    if (!art) return null;
+    if (typeof art === 'string') return art;
+    return art.medium || art.large || art.small || null;
+};
 
-    const refreshAccessToken = async (): Promise<string | null> => {
-        const refreshToken = localStorage.getItem('auth_refresh_token');
-        if (!refreshToken) return null;
-        try {
-            const res = await axios.post(`${BACKEND_URL}/api/auth/refresh`, { refresh_token: refreshToken });
-            const newToken = res.data?.access_token;
-            if (newToken) {
-                localStorage.setItem('auth_access_token', newToken);
-                return newToken;
+const PlaylistMosaic: React.FC<{ pl: any }> = ({ pl }) => {
+    const mainCover = extractArtworkUrl(pl.artwork || pl.cover_url || pl.cover);
+    const rawCovers = pl.artwork
+        ? [pl.artwork]
+        : (pl.mosaicCovers || [pl.artwork, pl.cover2, pl.cover3, pl.cover4]);
+    const covers = rawCovers.map(extractArtworkUrl).filter(Boolean) as string[];
+
+    if (covers.length >= 4 && !mainCover) return (
+        <div className="w-full aspect-square grid grid-cols-2 gap-[2px] overflow-hidden rounded-2xl border border-white/5 group-hover:border-white/15 transition-all shadow-lg">
+            {covers.slice(0, 4).map((c: string, i: number) => (
+                <img key={i} src={c} className="w-full h-full object-cover" />
+            ))}
+        </div>
+    );
+    return (
+        <div className="w-full aspect-square rounded-2xl overflow-hidden bg-[#111] border border-white/5 group-hover:border-white/15 transition-all shadow-lg flex items-center justify-center">
+            {mainCover
+                ? <img src={mainCover} className="w-full h-full object-cover" />
+                : <Music size={24} className="text-white/10" />
             }
-        } catch {
-            // If refresh fails, clear all to force login
-            localStorage.removeItem('auth_access_token');
-            localStorage.removeItem('auth_refresh_token');
-            console.warn('[Auth] Refresh failed, session cleared');
-        }
-        return null;
-    };
+        </div>
+    );
+};
 
-    const loadProfile = async () => {
-        const data = await getProfile();
-        setProfile(data);
-        setEditData(data);
+// ─── Main ProfileView ─────────────────────────────────────────────────────────
+export const ProfileView: React.FC<{ userId?: string }> = ({ userId: propUserId }) => {
+    const { user, updateProfile: updateProfileStore, logout } = useAuth();
 
-        if (window.electron?.getStorageSize) {
-            const size = await window.electron.getStorageSize();
-            setStorageSize(size);
-        }
+    const [profile, setProfile]     = useState<any>(null);
+    const [bio, setBio]             = useState('');
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData]   = useState<any>({});
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+    const [activeSection, setActiveSection] = useState<'music' | 'playlists' | 'stats'>('music');
+    const [stats, setStats]         = useState({ following: 0, followers: 0, friends: 0, publicPlaylists: 0 });
+    const [connections, setConnections] = useState<{ following: any[]; followers: any[]; friends: any[] }>({ following: [], followers: [], friends: [] });
+    const [playlists, setPlaylists] = useState<any[]>([]);
+    const [recentFavorites, setRecentFavorites] = useState<any[]>([]);
+    const [requestSent, setRequestSent] = useState(false);
+    const [isFriend, setIsFriend]   = useState(false);
+    const [modal, setModal]         = useState<'followers' | 'following' | 'friends' | null>(null);
+    const [copied, setCopied]       = useState(false);
 
-        try {
-            const token = localStorage.getItem('auth_access_token');
-            if (token) {
+    const fileInputRef   = useRef<HTMLInputElement>(null);
+    const bannerInputRef = useRef<HTMLInputElement>(null);
+
+    const targetUserId     = propUserId;
+    const isForeignProfile = !!targetUserId && targetUserId !== user?.id;
+
+    const loadProfile = useCallback(async () => {
+        let data: any;
+        const token   = localStorage.getItem('svzn_token') || localStorage.getItem('auth_access_token');
+        const baseUrl = (import.meta as any).env?.DEV ? '' : ((import.meta as any).env?.VITE_BACKEND_URL || '');
+
+        if (isForeignProfile) {
+            try {
+                const res = await fetch(`${baseUrl}/api/user/${targetUserId}`, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'X-SoundVzn-Identity': 'SVZN-CORE-AUTH' }
+                });
+                if (res.ok) {
+                    data = await res.json();
+                } else {
+                    // Try social search as fallback
+                    const found = await socialService.searchUsers(targetUserId as string);
+                    data = found.find((u: any) => u.id === targetUserId) || null;
+                }
+            } catch {
                 try {
-                    const res = await axios.get(`${BACKEND_URL}/api/auth/security-dashboard`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    setSecurityData(res.data);
-                } catch (err: any) {
-                    const status = err?.response?.status;
-                    if (status === 401 || status === 403) {
-                        const newToken = await refreshAccessToken();
-                        if (newToken) {
-                            const retry = await axios.get(`${BACKEND_URL}/api/auth/security-dashboard`, {
-                                headers: { Authorization: `Bearer ${newToken}` }
-                            });
-                            setSecurityData(retry.data);
-                            return;
-                        }
-                    }
-                    setSecurityData(null);
+                    const found = await socialService.searchUsers(targetUserId as string);
+                    data = found.find((u: any) => u.id === targetUserId) || null;
+                } catch {
+                    data = null;
                 }
             }
-        } catch (e) {
-            console.error('Failed to load security dashboard', e);
-        }
-    };
-
-    useEffect(() => {
-        loadProfile();
-
-        const handleSuccessCheck = () => {
-            const hash = window.location.hash;
-            if (!hash.includes('?')) return;
-
-            const params = new URLSearchParams(hash.split('?')[1]);
-            const sessionId = params.get('session_id');
-            const success = params.get('success');
-
-            if (success === 'true' && sessionId) {
-                confirmUpgrade(sessionId);
+            // If still no data, show a placeholder so we don't show own profile
+            if (!data) {
+                data = {
+                    id: targetUserId,
+                    name: 'Usuario',
+                    username: 'user',
+                    avatar: null,
+                    banner: null,
+                    bio: '',
+                    tier: 'standard',
+                    svzn_id: 0,
+                };
             }
-        };
+        } else {
+            const bannerKey = user ? `svzn_banner_${(user as any).email || user.id}` : 'svzn_banner';
+            data = user ? { ...user, bio: user.bio || '', banner: (user as any).banner || localStorage.getItem(bannerKey) || '' } : null;
+        }
 
-        handleSuccessCheck();
-        window.addEventListener('hashchange', handleSuccessCheck);
-        return () => window.removeEventListener('hashchange', handleSuccessCheck);
-    }, []);
+        if (data) { setProfile(data); setEditData(data); setBio(data.bio || ''); }
 
-    const confirmUpgrade = async (sessionId: string) => {
         try {
-            const res = await fetch('http://localhost:3000/api/payments/confirm-success', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionId,
-                    email: editData.email || profile?.email,
-                    name: editData.name || profile?.name
-                })
-            });
-            const data = await res.json();
-            if (data.success) {
-                await updateProfile({
-                    tier: 'pro',
-                    stripeCustomerId: data.customerId,
-                    stripeSubscriptionId: data.subscriptionId
-                });
-                await loadProfile();
-
-                // Redirigir automáticamente al panel de gestión
-                setTimeout(async () => {
-                    const portalRes = await fetch('http://localhost:3000/api/payments/create-portal-session', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            email: editData.email || profile?.email,
-                            customerId: data.customerId
+            if (isForeignProfile) {
+                const [fr, pr] = await Promise.all([
+                    fetch(`${baseUrl}/api/user/${targetUserId}/friends`,  { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${baseUrl}/api/user/${targetUserId}/playlists`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
+                const [fd, pd] = await Promise.all([fr.ok ? fr.json() : [], pr.ok ? pr.json() : []]);
+                setConnections({ following: fd, followers: fd, friends: fd });
+                setPlaylists(pd);
+                setStats({ following: fd.length, followers: fd.length, friends: fd.length, publicPlaylists: pd.length });
+            } else {
+                const localPlaylists = await getAllPlaylists();
+                const { getPlaylistTracks: localGetTracks } = await import('@utils/database');
+                const enriched = await Promise.all(localPlaylists.map(async (p: any) => {
+                    const tracks = await localGetTracks(p.id);
+                    const mosaicCovers = tracks
+                        .slice(0, 4)
+                        .map((t: any) => {
+                            const art = t.artwork;
+                            if (!art) return null;
+                            if (typeof art === 'string') return art;
+                            return art.medium || art.large || art.small || null;
                         })
-                    });
-                    const portalData = await portalRes.json();
-                    if (portalData.url) {
-                        window.location.href = portalData.url;
-                    }
-                }, 1500);
-
-                // Clean URL
-                window.history.replaceState({}, document.title, window.location.hash.split('?')[0]);
+                        .filter(Boolean);
+                    return { ...p, mosaicCovers };
+                }));
+                setPlaylists(enriched);
+                try {
+                    const fr = await fetch(`${baseUrl}/api/user/${user?.id}/friends`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const fd = fr.ok ? await fr.json() : [];
+                    setConnections({ following: fd, followers: fd, friends: fd });
+                    setStats({ following: fd.length, followers: fd.length, friends: fd.length, publicPlaylists: enriched.length });
+                } catch {
+                    setStats({ following: 0, followers: 0, friends: 0, publicPlaylists: enriched.length });
+                }
             }
-        } catch (e) {
-            console.error('Error confirming upgrade:', e);
+        } catch {}
+
+        if (isForeignProfile && user?.id) {
+            try {
+                const myFriendsRes = await fetch(`${baseUrl}/api/user/${user.id}/friends`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (myFriendsRes.ok) {
+                    const myFriends = await myFriendsRes.json();
+                    setIsFriend(myFriends.some((f: any) => f.id === targetUserId));
+                }
+            } catch {}
         }
-    };
+
+        if (!isForeignProfile) {
+            try {
+                const tracks = await getAllTracks();
+                // Deduplicar por ID antes de filtrar favoritos
+                const seen = new Set<string>();
+                const unique = tracks.filter(t => {
+                    if (seen.has(t.id)) return false;
+                    seen.add(t.id);
+                    return true;
+                });
+                setRecentFavorites(unique.filter(t => t.favorite).slice(0, 8));
+            } catch {}
+        } else {
+            // Foreign profile — don't show own favorites
+            setRecentFavorites([]);
+        }
+    }, [isForeignProfile, targetUserId, user]);
+
+    useEffect(() => { loadProfile(); }, [loadProfile]);
 
     const handleSave = async () => {
-        try {
-            // First, sync with backend to check name availability and update auth DB
-            const token = localStorage.getItem('auth_access_token');
-            if (token) {
-                await axios.post(`${BACKEND_URL}/api/auth/update-profile`,
-                    { name: editData.name },
-                    { headers: { Authorization: `Bearer ${token}` } }
-                );
+        const success = await updateProfileStore({ 
+            name: editData.name, 
+            avatar: editData.avatar, 
+            bio,
+            banner: editData.banner as any,
+        } as any);
+        if (success) {
+            if ((window as any).electron) await dbUpdateProfile({ bio });
+            // Persist banner locally too
+            if (editData.banner) {
+                const stored = localStorage.getItem('svzn_user');
+                if (stored) {
+                    try {
+                        const u = JSON.parse(stored);
+                        localStorage.setItem('svzn_user', JSON.stringify({ ...u, banner: editData.banner }));
+                        const bannerKey = `svzn_banner_${u.email || u.id}`;
+                        localStorage.setItem(bannerKey, editData.banner);
+                    } catch {}
+                }
             }
-
-            // Then update local data
-            await updateProfile(editData);
-            await loadProfile();
             setIsEditing(false);
-            // Dispatch event for other components (Header)
             window.dispatchEvent(new CustomEvent('profile-updated'));
-        } catch (err: any) {
-            const msg = err.response?.data?.error || 'Error al guardar el perfil';
-            alert(msg);
         }
     };
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'avatar') => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setEditData({ ...editData, [field]: reader.result });
-            };
-            reader.readAsDataURL(file);
+    const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0]; if (!f) return;
+        const r = new FileReader();
+        r.onloadend = () => setEditData({ ...editData, avatar: r.result });
+        r.readAsDataURL(f);
+    };
+
+    const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0]; if (!f) return;
+        const r = new FileReader();
+        r.onloadend = () => setEditData({ ...editData, banner: r.result });
+        r.readAsDataURL(f);
+    };
+
+    const navigate = (userId: string) =>
+        window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'profile', params: { userId } } }));
+
+    const navigateToPlaylist = (playlistId: string) =>
+        window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'playlist', params: { playlistId } } }));
+
+    const goBack = () =>
+        window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'friends' } }));
+
+    const sendRequest = async () => {
+        if (isFriend) {
+            try {
+                await socialService.removeFriend(targetUserId!);
+                setIsFriend(false);
+                usePlayerStore.getState().addToast({ type: 'success', message: 'Dejaste de seguir a este usuario', duration: 3000 });
+            } catch {}
+            return;
         }
+        try {
+            await socialService.sendFriendRequest(targetUserId!);
+            setRequestSent(true);
+            usePlayerStore.getState().addToast({ type: 'success', message: 'Solicitud enviada ✨', duration: 3000 });
+        } catch {}
+    };
+
+    const handleMessage = () =>
+        window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'friends', params: { openChatId: targetUserId } } }));
+
+    const handleShare = async () => {
+        const url = `${window.location.origin}/?profile=${targetUserId || user?.id}`;
+        try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
     };
 
     if (!profile) return (
         <div className="flex items-center justify-center h-full">
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
     );
 
+    const displayName = profile?.name || user?.name || 'Usuario';
+    const username    = profile?.username || user?.username || 'user';
+    const svznId      = (profile?.svzn_id || user?.svzn_id || 0).toString().padStart(6, '0');
+    const isPro       = profile?.tier === 'pro';
+
     return (
-        <div className="max-w-3xl mx-auto pb-40">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                {/* Profile Header Card - Ultra Premium Glass */}
-                <div className="bg-white/5 backdrop-blur-[60px] border border-white/10 rounded-[48px] p-10 mt-10 text-center relative overflow-hidden shadow-2xl">
-                    {/* Decorative Background Glows */}
-                    <div className="absolute -top-24 -left-24 w-64 h-64 bg-primary/10 blur-[100px] rounded-full pointer-events-none" />
-                    <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-secondary/10 blur-[100px] rounded-full pointer-events-none" />
+        <div className="min-h-full bg-[#050507] text-white overflow-x-hidden">
+            <AnimatePresence>
+                {modal && (
+                    <ConnectionsModal
+                        initialTab={modal}
+                        connections={connections}
+                        onClose={() => setModal(null)}
+                        onNavigate={navigate}
+                    />
+                )}
+            </AnimatePresence>
 
-                    {/* Edit Toggle - High Depth Buttons */}
-                    <div className="absolute top-8 right-10 z-20">
-                        {isEditing ? (
-                            <div className="flex gap-3">
-                                <button onClick={() => setIsEditing(false)} className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/30 flex items-center justify-center hover:bg-red-500/20 transition-all active:scale-90">
-                                    <X size={24} />
-                                </button>
-                                <button onClick={handleSave} className="w-12 h-12 rounded-2xl bg-green-500/10 text-green-400 border border-green-500/30 flex items-center justify-center hover:bg-green-500/20 transition-all active:scale-90">
-                                    <Check size={24} />
-                                </button>
-                            </div>
-                        ) : (
-                            <button onClick={() => setIsEditing(true)} className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 flex items-center justify-center transition-all group active:scale-90">
-                                <Edit2 size={24} className="group-hover:scale-110 transition-transform" />
-                            </button>
-                        )}
-                    </div>
+            {/* ── BANNER ── */}
+            <div className="relative w-full h-[180px] sm:h-[260px] overflow-hidden group/banner">
+                {safeImageSrc(editData.banner) ? (
+                    <img src={safeImageSrc(editData.banner)!} className="w-full h-full object-cover" alt="banner" />
+                ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-primary/20 via-indigo-900/30 to-[#050507]" />
+                )}
+                {/* Gradient overlay bottom */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050507] via-[#050507]/40 to-transparent" />
 
-                    <div className="relative z-10 pt-4">
-                        <div className="relative inline-block mb-10 group">
-                            <motion.div
-                                whileHover={{ scale: 1.05 }}
-                                className="w-40 h-40 rounded-full bg-gradient-to-br from-primary via-secondary to-primary p-1.5 overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-4 border-white/10 relative z-10"
-                            >
-                                <div className="w-full h-full rounded-full bg-dark-800 flex items-center justify-center overflow-hidden">
-                                    {editData.avatar ? (
-                                        <img src={editData.avatar} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Profile" />
-                                    ) : (
-                                        <User size={60} className="text-white/20" />
-                                    )}
-                                </div>
-                            </motion.div>
-
-                            {/* Inner Glow for Avatar */}
-                            <div className="absolute inset-0 rounded-full bg-primary/20 blur-[20px] scale-90 group-hover:scale-110 transition-transform animate-pulse" />
-
-                            {isEditing && (
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="absolute bottom-2 right-2 w-12 h-12 rounded-2xl bg-white text-dark-950 shadow-2xl hover:scale-110 transition-all flex items-center justify-center z-20"
-                                >
-                                    <Camera size={24} />
-                                    <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={(e) => handleImageUpload(e, 'avatar')} />
-                                </button>
-                            )}
-                        </div>
-
-                        {isEditing ? (
-                            <div className="max-w-xs mx-auto">
-                                <input
-                                    type="text"
-                                    value={editData.name}
-                                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-center text-4xl font-light text-white focus:border-primary/40 outline-none transition-all shadow-xl tracking-tighter"
-                                    placeholder="Tu nombre"
-                                />
-                            </div>
-                        ) : (
-                            <>
-                                <h1 className="text-5xl font-light text-white mb-2 tracking-tighter">{profile.name}</h1>
-                                <div className="flex items-center justify-center gap-3 mb-8">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary/40 shadow-[0_0_10px_rgba(var(--primary-rgb),0.5)]" />
-                                    <p className="text-[11px] font-medium text-white/30 tracking-widest">{profile.email}</p>
-                                </div>
-                            </>
-                        )}
-
-                        {profile.tier === 'pro' ? (
-                            <div className="inline-flex items-center gap-3 bg-gradient-to-r from-amber-200 via-amber-500 to-amber-200 px-10 py-4 rounded-full shadow-[0_20px_40px_rgba(245,158,11,0.4)] border border-amber-300/30 animate-pulse-slow">
-                                <Crown size={24} className="text-dark-950 fill-current" />
-                                <span className="text-xs font-bold text-dark-950 tracking-wide">SoundVzn Pro</span>
-                            </div>
-                        ) : (
-                            <div className="inline-flex items-center gap-3 bg-white/5 px-8 py-3 rounded-full border border-white/10">
-                                <span className="text-[11px] font-bold text-white/50 tracking-wide">SoundVzn Standard</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Storage Quota - Only for Standard */}
-                {profile.tier === 'standard' && (
-                    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[32px] p-8 mb-10 shadow-xl overflow-hidden relative group">
-                        <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <ImageIcon size={80} />
-                        </div>
-                        <div className="relative z-10">
-                            <div className="flex justify-between items-end mb-4">
-                                <div>
-                                    <h3 className="text-xl font-light text-white tracking-tight">Capacidad offline</h3>
-                                    <p className="text-[10px] font-medium text-white/20 tracking-widest uppercase">Límite estándar: 6GB</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-2xl font-black text-white italic tracking-tighter">
-                                        {(storageSize / (1024 * 1024 * 1024)).toFixed(2)} GB
-                                    </p>
-                                    <p className="text-[11px] font-bold text-white/40 mb-1 tracking-wide">
-                                        Capacidad Almacenamiento Offline (6GB)
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5">
-                                <motion.div
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${Math.min((storageSize / (6 * 1024 * 1024 * 1024)) * 100, 100)}%` }}
-                                    className={clsx(
-                                        "h-full rounded-full transition-colors",
-                                        (storageSize / (6 * 1024 * 1024 * 1024)) > 0.9 ? "bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]" : "bg-primary-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]"
-                                    )}
-                                />
-                            </div>
-                            {(storageSize / (6 * 1024 * 1024 * 1024)) > 0.9 && (
-                                <p className="mt-4 text-[10px] font-black text-red-400 uppercase tracking-widest flex items-center gap-2">
-                                    <X size={12} strokeWidth={3} />
-                                    Espacio casi lleno. Mejora a Pro para ilimitado.
-                                </p>
-                            )}
-                        </div>
-                    </div>
+                {/* Back button */}
+                {isForeignProfile && (
+                    <button onClick={goBack}
+                        className="absolute top-4 left-4 z-10 flex items-center gap-2 px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-sm font-bold border border-white/20 hover:bg-black/80 transition-all text-white shadow-lg">
+                        <ArrowLeft size={16} /> Volver
+                    </button>
                 )}
 
-                {/* MODERN TECH PRICING SECTION - Hidden if PRO */}
-                {(profile && profile.tier !== 'pro') && (
-                    <div className="mb-24 px-4 overflow-hidden">
-                        <div className="text-center mb-12">
-                            <h3 className="text-3xl font-light text-white tracking-tight mb-2">Evoluciona tu sonido</h3>
-                            <p className="text-white/20 text-[10px] font-medium uppercase tracking-[0.2em]">Elige tu nivel de fidelidad</p>
+                {/* Edit banner button */}
+                {isEditing && (
+                    <button onClick={() => bannerInputRef.current?.click()}
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/banner:opacity-100 transition-opacity backdrop-blur-sm">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full border border-white/20 text-sm font-semibold">
+                            <Camera size={16} /> Cambiar portada
                         </div>
+                    </button>
+                )}
+                <input ref={bannerInputRef} type="file" hidden accept="image/*" onChange={handleBannerUpload} />
+            </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl mx-auto">
-                            {/* Standard Plan - Sleek Minimalist */}
-                            <div className={clsx(
-                                "bg-[#050508]/40 backdrop-blur-3xl border rounded-[32px] p-10 flex flex-col relative transition-all duration-700",
-                                profile.tier === 'standard' ? "border-primary/20 shadow-[0_0_80px_rgba(14,165,233,0.05)] scale-100" : "border-white/5 opacity-50 grayscale hover:grayscale-0 hover:opacity-100"
-                            )}>
-                                <div className="mb-8">
-                                    <span className="text-[10px] font-black text-white/20 uppercase tracking-widest block mb-4">Membresía Base</span>
-                                    <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter">SV Standard</h4>
-                                    <div className="mt-4 flex items-baseline gap-1">
-                                        <span className="text-5xl font-black text-white italic">0€</span>
-                                        <span className="text-white/20 text-xs font-bold uppercase">/Always</span>
-                                    </div>
+            {/* ── PROFILE HEADER ── */}
+            <div className="relative px-4 sm:px-8 pb-0 -mt-16 sm:-mt-20">
+                <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6">
+
+                    {/* Avatar */}
+                    <div className="relative shrink-0 group/avatar self-start sm:self-auto">
+                        <div className={clsx(
+                            'w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl overflow-hidden border-4 shadow-2xl relative',
+                            isPro ? 'border-primary/60' : 'border-[#050507]'
+                        )}>
+                            {safeImageSrc(editData.avatar)
+                                ? <img src={safeImageSrc(editData.avatar)!} className="w-full h-full object-cover" alt="avatar" />
+                                : <div className="w-full h-full bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center text-4xl font-black text-white/30 uppercase">
+                                    {displayName[0]}
+                                  </div>
+                            }
+                            {isEditing && (
+                                <div onClick={() => fileInputRef.current?.click()}
+                                    className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer backdrop-blur-sm">
+                                    <Camera size={20} className="text-white" />
                                 </div>
+                            )}
+                        </div>
+                        {/* Online dot */}
+                        {!isEditing && (
+                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 border-[3px] border-[#050507] rounded-full shadow-lg" />
+                        )}
+                        {isPro && (
+                            <div className="absolute -top-2 -right-2 bg-primary text-black rounded-full p-1 shadow-lg">
+                                <Crown size={10} />
+                            </div>
+                        )}
+                        <input ref={fileInputRef} type="file" hidden accept="image/*" onChange={handleAvatarUpload} />
+                    </div>
 
-                                <div className="space-y-4 mb-12 flex-1">
-                                    <div className="flex items-center gap-3 py-2 border-b border-white/5">
-                                        <div className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-white/40"><Check size={12} /></div>
-                                        <span className="text-xs font-bold text-white/40 italic uppercase tracking-wider">Hi-Res Flow (Lossless)</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 py-2 border-b border-white/5">
-                                        <div className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-white/40"><Check size={12} /></div>
-                                        <span className="text-xs font-bold text-white/40 italic uppercase tracking-wider">Storage: 6GB Offline</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 py-2 opacity-30">
-                                        <div className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-white/20"><X size={12} /></div>
-                                        <span className="text-xs font-bold text-white/20 italic uppercase tracking-wider line-through">Pro Audio Engine</span>
-                                    </div>
-                                </div>
-
-                                <button disabled className="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white/20 text-[10px] font-black uppercase tracking-[0.2em] italic">
-                                    {profile.tier === 'standard' ? 'Nivel Actual' : 'No disponible'}
-                                </button>
+                    {/* Name + actions row */}
+                    <div className="flex-1 min-w-0 pb-2">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                {isEditing ? (
+                                    <input value={editData.name || ''} onChange={e => setEditData({ ...editData, name: e.target.value })}
+                                        className="bg-transparent text-2xl sm:text-3xl font-black text-white outline-none border-b-2 border-primary/50 w-full pb-1 mb-1"
+                                        placeholder="Tu nombre" />
+                                ) : (
+                                    <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight truncate">{displayName}</h1>
+                                )}
+                                <p className="text-[12px] text-white/30 font-mono mt-0.5">
+                                    @{username} · <span className="text-primary/60">SV{svznId}</span>
+                                </p>
                             </div>
 
-                            {/* Pro Plan - Neon Tech Accents (Blue/Indigo) */}
-                            <div className={clsx(
-                                "bg-gradient-to-b from-[#0a0a0f] to-[#050508] border rounded-[32px] p-10 flex flex-col relative overflow-hidden transition-all duration-700 group",
-                                profile.tier === 'pro' ? "border-primary/50 shadow-[0_0_100px_rgba(14,165,233,0.15)]" : "border-primary/30 hover:border-primary/60 shadow-2xl"
-                            )}>
-                                {/* Accent Glow */}
-                                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-primary blur-[10px] opacity-50" />
-
-                                <div className="mb-8">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <span className="text-[10px] font-black text-primary uppercase tracking-widest">Premium Membership</span>
-                                        {profile.tier !== 'pro' && (
-                                            <span className="px-3 py-1 bg-primary text-dark-950 text-[9px] font-black uppercase rounded-full tracking-widest shadow-[0_0_20px_rgba(14,165,233,0.4)] animate-pulse">
-                                                30 Días Gratis
-                                            </span>
-                                        )}
-                                    </div>
-                                    <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter flex items-center gap-2">
-                                        SV <span className="text-primary italic">Pro</span>
-                                    </h4>
-                                    <div className="mt-4 flex items-baseline gap-1">
-                                        <span className="text-5xl font-black text-white italic">3.99€</span>
-                                        <span className="text-white/40 text-xs font-bold uppercase">/Mes</span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4 mb-12 flex-1">
-                                    <div className="flex items-center gap-3 py-2 border-b border-white/5 group-hover:border-primary/20 transition-colors">
-                                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Crown size={12} className="fill-current" /></div>
-                                        <span className="text-xs font-bold text-white/80 italic uppercase tracking-wider">Ilimitado (Sin Cuotas)</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 py-2 border-b border-white/5 group-hover:border-primary/20 transition-colors">
-                                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Crown size={12} className="fill-current" /></div>
-                                        <span className="text-xs font-bold text-white/80 italic uppercase tracking-wider">Crossfade Studio Engine</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 py-2 border-b border-white/5 group-hover:border-primary/20 transition-colors">
-                                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Crown size={12} className="fill-current" /></div>
-                                        <span className="text-xs font-bold text-white/80 italic uppercase tracking-wider">Ilimitado Cloud Storage</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 py-2">
-                                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Crown size={12} className="fill-current" /></div>
-                                        <span className="text-xs font-bold text-white/80 italic uppercase tracking-wider">Soporte Prioritario</span>
-                                    </div>
-                                </div>
-
-                                {profile.tier === 'pro' ? (
-                                    <button
-                                        onClick={async () => {
-                                            try {
-                                                const res = await fetch('http://localhost:3000/api/payments/create-portal-session', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({
-                                                        email: profile.email,
-                                                        customerId: profile.stripeCustomerId
-                                                    })
-                                                });
-                                                const data = await res.json();
-                                                if (res.ok && data.url) {
-                                                    window.location.href = data.url;
-                                                } else {
-                                                    alert('Error del portal: ' + (data.error || 'No se pudo generar la sesión.'));
-                                                }
-                                            } catch (e: any) {
-                                                console.error('Portal Error:', e);
-                                                alert('Servicio no disponible: ' + e.message);
-                                            }
-                                        }}
-                                        className="w-full py-5 rounded-2xl bg-white/5 hover:bg-primary/20 border border-white/10 hover:border-primary/50 text-white font-black text-xs uppercase tracking-[0.2em] italic shadow-inner transition-all"
-                                    >
-                                        Panel de Gestión
-                                    </button>
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-2 shrink-0">
+                                {isEditing ? (
+                                    <>
+                                        <button onClick={() => { setIsEditing(false); setEditData(profile); }}
+                                            className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold hover:bg-white/10 transition-all">
+                                            Cancelar
+                                        </button>
+                                        <button onClick={handleSave}
+                                            className="px-5 py-2 rounded-xl bg-white text-black text-sm font-black hover:bg-white/90 transition-all shadow-lg">
+                                            Guardar
+                                        </button>
+                                    </>
+                                ) : isForeignProfile ? (
+                                    <>
+                                        <button onClick={sendRequest} disabled={!isFriend && requestSent}
+                                            className={clsx('flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border',
+                                                isFriend ? 'bg-white/5 border-white/10 text-white/70 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20'
+                                                    : requestSent ? 'bg-white/5 border-white/10 text-white/30 cursor-default'
+                                                        : 'bg-primary border-primary text-black hover:bg-primary/90 shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]'
+                                            )}>
+                                            {isFriend ? <><UserCheck size={15} /> Siguiendo</> : requestSent ? 'Enviado' : <><UserPlus size={15} /> Seguir</>}
+                                        </button>
+                                        <button onClick={handleMessage}
+                                            className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold hover:bg-white/10 transition-all">
+                                            Mensaje
+                                        </button>
+                                        <button onClick={handleShare}
+                                            className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white hover:bg-white/10 transition-all">
+                                            {copied ? <Check size={16} className="text-emerald-400" /> : <Share2 size={16} />}
+                                        </button>
+                                    </>
                                 ) : (
-                                    <button
-                                        onClick={async () => {
-                                            setShowStripeModal(true);
-                                        }}
-                                        className="w-full py-5 rounded-2xl bg-primary hover:bg-primary/90 text-dark-950 font-black text-xs uppercase tracking-[0.2em] italic shadow-[0_20px_40px_rgba(14,165,233,0.3)] transition-all active:scale-95 group-hover:scale-[1.02]"
-                                    >
-                                        Iniciar Prueba Gratuita
-                                    </button>
+                                    <>
+                                        <button onClick={() => setIsEditing(true)}
+                                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm font-semibold hover:bg-white/10 transition-all">
+                                            <Edit3 size={14} /> Editar perfil
+                                        </button>
+                                        <button onClick={handleShare}
+                                            className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white hover:bg-white/10 transition-all">
+                                            {copied ? <Check size={16} className="text-emerald-400" /> : <Link size={16} />}
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
 
-                {/* PRO User Membership - Integrated Premium Experience */}
-                {profile.tier === 'pro' && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="mb-16 relative"
-                    >
-                        <div className="bg-[#050508] backdrop-blur-[60px] border border-white/5 rounded-[38px] p-10 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[100px] rounded-full -mr-32 -mt-32" />
+                {/* ── BIO ── */}
+                <div className="mt-4 max-w-xl">
+                    {isEditing ? (
+                        <textarea value={bio} onChange={e => setBio(e.target.value)} rows={2}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white/80 focus:border-white/25 outline-none resize-none transition-colors"
+                            placeholder="Escribe algo sobre ti..." />
+                    ) : (
+                        <p className="text-sm text-white/50 leading-relaxed">
+                            {bio || <span className="italic text-white/20">Sin biografía</span>}
+                        </p>
+                    )}
+                </div>
 
-                            <div className="flex flex-col md:flex-row items-center gap-10">
-                                <div className="mb-8 p-4 bg-white/5 rounded-3xl border border-white/10 backdrop-blur-md">
-                                    <img src="logo.png" alt="SoundVizion" className="h-10 w-auto brightness-110" />
+                {/* ── STATS ROW ── */}
+                <div className="flex items-center gap-1 mt-4 -mx-1">
+                    <StatPill value={stats.following}  label="Siguiendo"  onClick={() => setModal('following')} />
+                    <div className="w-px h-6 bg-white/10" />
+                    <StatPill value={stats.followers}  label="Seguidores" onClick={() => setModal('followers')} />
+                    <div className="w-px h-6 bg-white/10" />
+                    <StatPill value={stats.friends}    label="Amigos"     onClick={() => setModal('friends')} />
+                    <div className="w-px h-6 bg-white/10" />
+                    <StatPill value={stats.publicPlaylists} label="Playlists" />
+                </div>
+            </div>
+
+            {/* ── ANTHEM ── */}
+            <div className="px-4 sm:px-8 mt-6">
+                <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-3">Canción del momento</p>
+                <ProfileAnthem isForeign={isForeignProfile} userId={targetUserId} />
+            </div>
+
+            {/* ── SECTION TABS ── */}
+            <div className="px-4 sm:px-8 mt-8 border-b border-white/[0.06]">
+                <div className="flex gap-0">
+                    {([
+                        { id: 'music',     label: 'Música',    icon: Headphones },
+                        { id: 'playlists', label: 'Playlists', icon: Radio },
+                        { id: 'stats',     label: 'Stats',     icon: BarChart3 },
+                    ] as const).map(s => (
+                        <button key={s.id} onClick={() => setActiveSection(s.id)}
+                            className={clsx('flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-all',
+                                activeSection === s.id
+                                    ? 'text-white border-white'
+                                    : 'text-white/30 border-transparent hover:text-white/60'
+                            )}>
+                            <s.icon size={13} />
+                            <span className="hidden sm:inline">{s.label}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* ── SECTION CONTENT ── */}
+            <div className="px-4 sm:px-8 py-6 pb-32">
+                <AnimatePresence mode="wait">
+                    {activeSection === 'music' && (
+                        <motion.div key="music" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                            {recentFavorites.length > 0 ? (
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-4">Favoritos recientes</p>
+                                    {recentFavorites.map((track, i) => (
+                                        <button key={track.id || i}
+                                            onClick={() => usePlayerStore.getState().playUnifiedCollection(recentFavorites, i, { type: 'library', name: 'Favoritos' })}
+                                            className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-white/[0.04] transition-all group text-left">
+                                            <span className="text-[10px] font-mono text-white/20 w-5 text-center shrink-0">{i + 1}</span>
+                                            <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/5 border border-white/5 shrink-0">
+                                                {track.artwork
+                                                    ? <img src={typeof track.artwork === 'string' ? track.artwork : (track.artwork?.medium || track.artwork?.large || '')} className="w-full h-full object-cover" />
+                                                    : <Disc size={16} className="m-3 text-white/20" />
+                                                }
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-semibold text-white/80 group-hover:text-white truncate transition-colors">{track.title}</p>
+                                                <p className="text-[11px] text-white/30 truncate">{track.artist}</p>
+                                            </div>
+                                            <Heart size={14} className="text-rose-500 fill-rose-500 shrink-0 opacity-60" />
+                                        </button>
+                                    ))}
                                 </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-20 opacity-20">
+                                    <Headphones size={40} className="mb-3" />
+                                    <p className="text-sm font-medium">Sin música favorita aún</p>
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
 
-                                <div className="flex-1 text-center md:text-left">
-                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-black uppercase tracking-widest mb-4">
-                                        Suscripción Activa
+                    {activeSection === 'playlists' && (
+                        <motion.div key="playlists" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                            {!isForeignProfile && (
+                                <button onClick={() => window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'playlists', params: { openCreateModal: true } } }))}
+                                    className="w-full flex items-center gap-3 p-4 rounded-2xl border border-dashed border-white/10 hover:border-white/20 hover:bg-white/[0.02] transition-all mb-4 group">
+                                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                                        <Plus size={18} className="text-white/40 group-hover:text-white transition-colors" />
                                     </div>
-                                    <h2 className="text-5xl font-light text-white tracking-tighter leading-tight">
-                                        SoundVizion <span className="font-black italic text-primary">Pro</span>
-                                    </h2>
-                                    <p className="mt-6 text-white/40 text-lg font-medium max-w-md leading-relaxed">
-                                        Tu cuenta está optimizada con la máxima fidelidad y acceso total a nuestro ecosistema sonoro.
-                                    </p>
-                                </div>
-
-                                <button
-                                    onClick={async () => {
-                                        try {
-                                            const res = await fetch('http://localhost:3000/api/payments/create-portal-session', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                    email: profile.email,
-                                                    customerId: profile.stripeCustomerId
-                                                })
-                                            });
-                                            const data = await res.json();
-                                            if (res.ok && data.url) {
-                                                window.location.href = data.url;
-                                            }
-                                        } catch (e) {
-                                            console.error('Portal error');
-                                        }
-                                    }}
-                                    className="px-10 py-5 rounded-2xl bg-white text-dark-950 font-black text-[11px] uppercase tracking-[0.2em] italic transition-all shadow-[0_20px_40px_rgba(255,255,255,0.1)] hover:scale-[1.02] active:scale-95"
-                                >
-                                    Gestionar Membresía
+                                    <span className="text-sm font-semibold text-white/40 group-hover:text-white/70 transition-colors">Crear nueva playlist</span>
                                 </button>
-                            </div>
+                            )}
+                            {playlists.length > 0 ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                    {playlists.map(pl => (
+                                        <button key={pl.id} onClick={() => navigateToPlaylist(pl.id)}
+                                            className="group text-left flex flex-col gap-2">
+                                            <PlaylistMosaic pl={pl} />
+                                            <div className="px-0.5">
+                                                <p className="text-sm font-semibold text-white/80 group-hover:text-white truncate transition-colors">{pl.name}</p>
+                                                <p className="text-[11px] text-white/30 mt-0.5">
+                                                    {pl.trackIds?.length ?? pl.track_count ?? 0} pistas
+                                                    {(pl.isPublic || pl.is_public) ? ' · Pública' : ''}
+                                                </p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-20 opacity-20">
+                                    <Radio size={40} className="mb-3" />
+                                    <p className="text-sm font-medium">Sin playlists</p>
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
 
-                            {/* Status Indicators */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-16 pt-12 border-t border-white/5">
+                    {activeSection === 'stats' && (
+                        <motion.div key="stats" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 {[
-                                    { label: 'Calidad', value: 'Lossless Hi-Res (Std)' },
-                                    { label: 'Almacenamiento', value: 'Ilimitado Cloud' },
-                                    { label: 'Audio Engine', value: 'Studio Pro' },
-                                    { label: 'Soporte', value: 'VIP Direct' }
-                                ].map((item, idx) => (
-                                    <div key={idx} className="group cursor-default">
-                                        <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em] mb-2 group-hover:text-primary transition-colors">{item.label}</p>
-                                        <p className="text-sm font-bold text-white/80 italic tracking-tight">{item.value}</p>
+                                    { label: 'Canciones',  value: stats.publicPlaylists * 12, icon: Music,     color: 'from-blue-500/20 to-blue-600/10' },
+                                    { label: 'Favoritos',  value: recentFavorites.length,     icon: Heart,     color: 'from-rose-500/20 to-rose-600/10' },
+                                    { label: 'Playlists',  value: stats.publicPlaylists,      icon: Radio,     color: 'from-violet-500/20 to-violet-600/10' },
+                                    { label: 'Amigos',     value: stats.friends,              icon: Users,     color: 'from-emerald-500/20 to-emerald-600/10' },
+                                ].map(s => (
+                                    <div key={s.label} className={clsx('p-4 rounded-2xl bg-gradient-to-br border border-white/5', s.color)}>
+                                        <s.icon size={20} className="text-white/40 mb-3" />
+                                        <p className="text-2xl font-black text-white">{s.value}</p>
+                                        <p className="text-[11px] text-white/30 uppercase tracking-widest mt-1">{s.label}</p>
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    </motion.div>
-                )}
+                            <div className="mt-6 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                                <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-3">Estadísticas detalladas</p>
+                                <button onClick={() => window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'stats', params: { userId: targetUserId || user?.id } } }))}
+                                    className="flex items-center gap-2 text-sm text-primary/70 hover:text-primary transition-colors font-semibold">
+                                    <BarChart3 size={14} /> Ver estadísticas completas
+                                </button>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
 
-                {/* Stats Grid - High Depth */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-                    <StatCard icon={Music} label="PISTAS" value={profile.stats.songs} />
-                    <StatCard icon={Clock} label="HORAS" value={profile.stats.hours} color="secondary" />
-                    <StatCard icon={Heart} label="FAVORITOS" value={profile.stats.favorites} color="primary" />
-                    <StatCard icon={BarChart3} label="PLAYLISTS" value={profile.stats.playlists} color="secondary" />
+            {/* ── LOGOUT (own profile) ── */}
+            {!isForeignProfile && !isEditing && (
+                <div className="px-4 sm:px-8 pb-8 flex justify-center">
+                    <button onClick={() => { setIsLoggingOut(true); logout(); }}
+                        className="flex items-center gap-2 text-xs font-bold text-red-500/40 hover:text-red-500 transition-colors uppercase tracking-widest px-4 py-2 hover:bg-red-500/10 rounded-full">
+                        <LogOut size={13} /> {isLoggingOut ? 'Saliendo...' : 'Cerrar sesión'}
+                    </button>
                 </div>
-
-                {/* Security Status - Advanced Dashboard */}
-                {securityData && (
-                    <div className="bg-[#050508] border border-white/10 rounded-[32px] p-8 mb-8 relative overflow-hidden shadow-2xl">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 blur-[100px] rounded-full pointer-events-none" />
-
-                        <div className="flex items-center justify-between mb-8 relative z-10">
-                            <h3 className="text-sm font-black text-white/50 tracking-[0.2em] uppercase">Security Dashboard</h3>
-                            <div className={clsx(
-                                "px-4 py-1.5 border rounded-full font-black uppercase tracking-widest text-[10px]",
-                                securityData.securityScore >= 75 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500" :
-                                    securityData.securityScore >= 50 ? "bg-amber-500/10 border-amber-500/30 text-amber-500" :
-                                        "bg-red-500/10 border-red-500/30 text-red-500"
-                            )}>
-                                {securityData.securityScore >= 75 ? 'Excelente' : securityData.securityScore >= 50 ? 'Estable' : 'Vulnerable'}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
-                            <div className="col-span-1 md:col-span-2 flex flex-col justify-center p-6 rounded-2xl bg-white/5 border border-white/5">
-                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.3em] mb-2">Índice Global</p>
-                                <div className="flex items-end gap-3 mb-4">
-                                    <span className={clsx(
-                                        "text-6xl font-black tracking-tighter italic leading-none",
-                                        securityData.securityScore >= 75 ? "text-emerald-400" :
-                                            securityData.securityScore >= 50 ? "text-amber-400" : "text-red-400"
-                                    )}>{securityData.securityScore}%</span>
-                                </div>
-                                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                                    <motion.div initial={{ width: 0 }} animate={{ width: `${securityData.securityScore}%` }} transition={{ duration: 1.5, ease: "easeOut" }} className={clsx("h-full rounded-full shadow-[0_0_10px_currentColor]", securityData.securityScore >= 75 ? "bg-emerald-500 text-emerald-500" : securityData.securityScore >= 50 ? "bg-amber-500 text-amber-500" : "bg-red-500 text-red-500")} />
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col gap-4">
-                                <div className="flex-1 flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/5">
-                                    <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center", securityData.verified ? "bg-primary/10 text-primary" : "bg-white/5 text-white/20")}>
-                                        <Check size={18} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-white/80">{securityData.verified ? 'Verificado' : 'No verificado'}</p>
-                                        <p className="text-[10px] text-white/20 font-medium tracking-[0.2em] uppercase">Status</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex-1 flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/5">
-                                    <div className="w-10 h-10 rounded-xl bg-amber-400/10 flex items-center justify-center text-amber-400">
-                                        <Crown size={18} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-white/80 tracking-widest uppercase">{profile.tier}</p>
-                                        <p className="text-[10px] text-white/20 font-medium tracking-[0.2em] uppercase">Access</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-
-                {/* System Controls - Minimalist Small */}
-                <div className="flex items-center justify-between gap-4 mt-12">
-                    <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="flex-1 py-3 px-6 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl text-white/60 hover:text-white text-[11px] font-medium flex items-center justify-center gap-2 transition-all tracking-wider"
-                    >
-                        <Settings size={14} />
-                        Configuración
-                    </motion.button>
-
-                    <motion.button
-                        whileHover={!isLoggingOut ? { scale: 1.02 } : {}}
-                        whileTap={!isLoggingOut ? { scale: 0.98 } : {}}
-                        disabled={isLoggingOut}
-                        onClick={async () => {
-                            if (isLoggingOut) return;
-                            setIsLoggingOut(true);
-                            try {
-                                const { clearAuthSession } = await import('../../utils/database');
-                                await clearAuthSession();
-                                setTimeout(() => {
-                                    window.location.href = window.location.origin;
-                                }, 800);
-                            } catch (e) {
-                                setIsLoggingOut(false);
-                            }
-                        }}
-                        className={clsx(
-                            "py-3 px-6 border rounded-2xl text-[11px] font-medium flex items-center justify-center gap-2 transition-all tracking-wider",
-                            isLoggingOut
-                                ? "bg-white/5 border-white/5 text-white/20"
-                                : "bg-red-500/5 hover:bg-red-500/10 border-red-500/10 text-red-500/60 hover:text-red-500"
-                        )}
-                    >
-                        {isLoggingOut ? (
-                            <div className="w-3 h-3 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
-                        ) : (
-                            <LogOut size={14} />
-                        )}
-                        {isLoggingOut ? 'Saliendo' : 'Abandonar'}
-                    </motion.button>
-                </div>
-            </motion.div>
-            {showStripeModal && (
-                <StripeEmbeddedCheckout
-                    email={profile?.email}
-                    onClose={() => setShowStripeModal(false)}
-                />
             )}
         </div>
     );

@@ -4,12 +4,14 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SoundVizion – High-Fidelity Audio Player</title>
-    <meta name="description"
-        content="SoundVizion is a premium high-fidelity audio player and organizer for Windows and Mac." />
+    <title>SoundVizion – Hi-Res Audio Player</title>
+    <meta name="description" content="SoundVizion es el reproductor de audio de alta fidelidad para Windows y macOS. Streaming nativo de YouTube, soporte Hi-Res, y un entorno musical completamente inmersivo." />
+    <meta property="og:title" content="SoundVizion – Hi-Res Audio Player" />
+    <meta property="og:description" content="Diseño minimalista, streaming sin anuncios y calidad Hi-Res. El ecosistema de audio nativo para escritorio." />
+    <meta property="og:image" content="./assets/banner-splash.jpeg" />
     <link rel="icon" href="./assets/logo-app.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700;1,800&family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -20,7 +22,7 @@
         <div class="nav-inner">
             <a href="index.html" class="nav-logo">
                 <img src="./assets/logo-app.png" alt="SoundVizion" class="logo-icon" />
-                <span>SoundVizion</span>
+                SoundVizion
             </a>
             <ul class="nav-links">
                 <li><a href="#features">Características</a></li>
@@ -28,7 +30,7 @@
                 <li><a href="mailto:SoundVzn.app@outlook.es">Contacto</a></li>
             </ul>
             <a href="#download" class="nav-cta">Descargar Gratis</a>
-            <button class="hamburger" id="hamburger" aria-label="Menu">
+            <button class="hamburger" id="hamburger" aria-label="Menú">
                 <span></span><span></span><span></span>
             </button>
         </div>
@@ -39,105 +41,180 @@
         </div>
     </nav>
 
-    <!-- HERO -->
+    <!-- ═══ HERO ═══ -->
     <header id="hero">
-        <div class="hero-content">
-            <div class="hero-badge">v1.0.1-beta-f10</div>
-            <img src="./assets/banner-splash.jpeg" alt="Svzn" class="hero-logo-banner" />
-            <h1 class="hero-title">El estándar en reproducción de audio.</h1>
-            <p class="hero-sub">Diseño minimalista, streaming de YouTube sin anuncios y soporte Hi-Res. El ecosistema
-                musical nativo para Windows y macOS.</p>
-            <div class="hero-ctas">
-                <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.1-beta-f10/SoundVzn-Setup-v1.0.1-beta-f10.exe"
-                    class="btn-primary">Descargar Versión Beta</a>
+        <div class="hero-badge">
+            <span class="hero-badge-dot"></span>
+            v1.0.1-beta-f10 — Disponible ahora
+        </div>
+
+        <img src="./assets/banner-splash.jpeg" alt="SoundVizion Banner" class="hero-logo-banner" />
+
+        <h1 class="hero-title">El estándar en<br />reproducción de audio.</h1>
+
+        <p class="hero-sub">
+            Diseño minimalista, streaming nativo de YouTube sin anuncios y soporte Hi&#8209;Res.
+            El ecosistema musical definitivo para Windows y macOS.
+        </p>
+
+        <div class="hero-ctas">
+            <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.1-beta-f10/SoundVzn-Setup-v1.0.1-beta-f10.exe"
+                class="btn-primary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Descargar para Windows
+            </a>
+            <a href="/app" class="btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polygon points="10 8 16 12 10 16 10 8"></polygon>
+                </svg>
+                Abrir en el Navegador
+            </a>
+        </div>
+
+        <div class="stats-strip reveal" style="max-width:780px;margin:64px auto 0;">
+            <div class="stat-block">
+                <span class="stat-number">Hi‑Res</span>
+                <span class="stat-label">Calidad de audio</span>
+            </div>
+            <div class="stat-block">
+                <span class="stat-number">0</span>
+                <span class="stat-label">Anuncios en streaming</span>
+            </div>
+            <div class="stat-block">
+                <span class="stat-number">3D</span>
+                <span class="stat-label">Spatial Audio Engine</span>
             </div>
         </div>
+
+        <div class="hero-divider"></div>
     </header>
 
-    <!-- FEATURES -->
+    <!-- ═══ FEATURES ═══ -->
     <section id="features" class="section">
         <div class="container border-top">
-            <div class="section-intro">
-                <h2>Ingeniería de sonido, simplificada.</h2>
-                <p>Una interfaz sin distracciones centrada exclusivamente en la calidad de tu biblioteca musical.</p>
+            <div class="section-intro reveal">
+                <p class="section-label">Motor Premium</p>
+                <h2>Ingeniería de sonido,<br />simplificada.</h2>
+                <p>Una interfaz sin distracciones, centrada exclusivamente en la calidad de tu biblioteca musical.</p>
             </div>
 
             <div class="features-grid">
-                <div class="feature-item">
+                <div class="feature-item reveal">
+                    <div class="feature-icon">🎛️</div>
                     <h3>Hi-Res Engine</h3>
-                    <p>Motor de audio optimizado para formatos sin pérdida. Escucha cada matiz sin compresión
-                        intermedia.</p>
+                    <p>Motor de audio optimizado para formatos sin pérdida. Escucha cada matiz sin compresión intermedia, con hasta 192 kHz / 32-bit.</p>
                 </div>
-                <div class="feature-item">
+                <div class="feature-item reveal" style="transition-delay:0.1s">
+                    <div class="feature-icon">🌈</div>
                     <h3>Hologram Visualizer</h3>
-                    <p>Un ecualizador paramétrico analítico que reacciona limpiamente a las frecuencias reales del
-                        espectro en tiempo real.</p>
+                    <p>Visualizador espectral dinámico que reacciona en tiempo real a las frecuencias del audio. Arte generativo sincronizado con tu música.</p>
                 </div>
-                <div class="feature-item">
+                <div class="feature-item reveal" style="transition-delay:0.15s">
+                    <div class="feature-icon">▶️</div>
                     <h3>Streaming Nativo</h3>
-                    <p>Integración directa con el motor de YouTube para reproducir cualquier canción al instante sin
-                        anuncios.</p>
+                    <p>Integración directa con el motor de YouTube para reproducir cualquier canción al instante, sin anuncios, sin interrupciones.</p>
                 </div>
-                <div class="feature-item">
-                    <h3>Gestión Local</h3>
-                    <p>Soporte completo para bibliotecas off-grid y descargas. Mantén el control de tus propios
-                        archivos.</p>
+                <div class="feature-item reveal" style="transition-delay:0.2s">
+                    <div class="feature-icon">📁</div>
+                    <h3>Biblioteca Local</h3>
+                    <p>Soporte completo para colecciones offline con escaneo automático, metadatos inteligentes y reproducción sin conexión a internet.</p>
+                </div>
+                <div class="feature-item reveal" style="transition-delay:0.25s">
+                    <div class="feature-icon">🧠</div>
+                    <h3>Discovery IA</h3>
+                    <p>Sistema de recomendaciones basado en tu historial de escucha, estado de ánimo detectado y preferencias musicales en tiempo real.</p>
+                </div>
+                <div class="feature-item reveal" style="transition-delay:0.3s">
+                    <div class="feature-icon">👥</div>
+                    <h3>Social &amp; Discord</h3>
+                    <p>Comparte lo que escuchas con amigos, sincroniza tu estado en Discord y descubre la música de tu red social musical.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- DOWNLOAD -->
+    <!-- ═══ DOWNLOAD ═══ -->
     <section id="download" class="section bg-subtle">
         <div class="container border-top">
-            <div class="section-intro text-center">
-                <h2>Empieza a escuchar</h2>
-                <p>Aplicaciones nativas optimizadas para cada plataforma.</p>
+            <div class="section-intro reveal">
+                <p class="section-label">Instalación</p>
+                <h2>Empieza a escuchar.</h2>
+                <p>Aplicaciones nativas optimizadas para cada plataforma. Descarga gratuita.</p>
             </div>
 
             <div class="download-cards">
-                <div class="download-card">
+                <div class="download-card reveal">
+                    <span class="platform-icon">🪟</span>
                     <h4>Windows</h4>
-                    <p class="req">Windows 10/11 (64-bit)</p>
+                    <p class="req">Windows 10 / 11 · 64-bit</p>
                     <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.1-beta-f10/SoundVzn-Setup-v1.0.1-beta-f10.exe"
-                        class="btn-outline">Descargar para Windows</a>
+                        class="btn-outline">Descargar .exe</a>
+                    <span class="link-small">Instalador NSIS · ~120 MB</span>
                 </div>
 
-                <div class="download-card">
+                <div class="download-card reveal" style="transition-delay:0.1s">
+                    <span class="platform-icon">🍎</span>
                     <h4>macOS</h4>
-                    <p class="req">macOS 12+ (Apple Silicon & Intel)</p>
+                    <p class="req">macOS 12+ · Apple Silicon &amp; Intel</p>
                     <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.1-beta-f10/SoundVzn-1.0.1-beta-f10-arm64.dmg"
-                        class="btn-outline">Descargar para Mac</a>
+                        class="btn-outline">Descargar .dmg (Apple Silicon)</a>
                     <a href="https://github.com/2xadamx/SoundVzn/releases/download/v1.0.1-beta-f10/SoundVzn-1.0.1-beta-f10-arm64.pkg"
-                        class="link-small">Archivo instalador (.pkg)</a>
+                        class="link-small">Archivo .pkg alternativo</a>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- FOOTER -->
+    <!-- ═══ FOOTER ═══ -->
     <footer>
         <div class="container">
             <div class="footer-top">
                 <div class="footer-brand">
-                    <img src="./assets/logo-app.png" alt="SoundVizion Logo" class="footer-icon" />
-                    <span>SoundVizion</span>
+                    <img src="./assets/logo-app.png" alt="SoundVizion" class="footer-icon" />
+                    SoundVizion
                 </div>
                 <div class="footer-links">
                     <a href="mailto:SoundVzn.app@outlook.es">Soporte</a>
-                    <a href="privacy.html">Política de Privacidad</a>
-                    <a href="terms.html">Términos de Servicio</a>
+                    <a href="privacy.html">Privacidad</a>
+                    <a href="terms.html">Términos</a>
                 </div>
             </div>
             <div class="footer-bottom">
                 <p>© 2026 SoundVzn. Todos los derechos reservados.</p>
-                <p class="contact-email">Contacto: <a href="mailto:SoundVzn.app@outlook.es">SoundVzn.app@outlook.es</a>
+                <p class="contact-email">
+                    <a href="mailto:SoundVzn.app@outlook.es">SoundVzn.app@outlook.es</a>
                 </p>
             </div>
         </div>
     </footer>
 
     <script src="./app.js"></script>
+    <script>
+        // Scroll-reveal
+        const revealEls = document.querySelectorAll('.reveal');
+        const io = new IntersectionObserver(entries => {
+            entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+        }, { threshold: 0.1 });
+        revealEls.forEach(el => io.observe(el));
+
+        // Hamburger
+        document.getElementById('hamburger').addEventListener('click', () => {
+            document.getElementById('mobile-menu').classList.toggle('open');
+        });
+
+        // Navbar scroll tint
+        window.addEventListener('scroll', () => {
+            document.getElementById('navbar').style.background =
+                window.scrollY > 30 ? 'rgba(2,2,5,0.95)' : 'rgba(2,2,5,0.75)';
+        });
+    </script>
 </body>
 
 </html>

@@ -5,6 +5,7 @@ import { usePlayerStore } from '../../store/player';
 import { getAllTracks } from '../../utils/database';
 import { Track } from '../../types';
 import { shallow } from 'zustand/shallow';
+import { toSentenceCase } from '../../utils/formatters';
 
 export const DownloadsView: React.FC = () => {
     const [downloads, setDownloads] = useState<Track[]>([]);
@@ -104,8 +105,8 @@ export const DownloadsView: React.FC = () => {
                         <Download size={80} className="text-white" />
                     </div>
                     <div className="mb-2">
-                        <p className="text-xs font-bold text-text-tertiary mb-2">Biblioteca</p>
-                        <h1 className="text-6xl font-black text-white italic tracking-tighter mb-4">Descargas</h1>
+                        <p className="text-xs font-bold text-text-tertiary mb-2">{toSentenceCase('Biblioteca')}</p>
+                        <h1 className="text-6xl font-black text-white tracking-tighter mb-4">{toSentenceCase('Descargas')}</h1>
                         <div className="flex items-center gap-4">
                             <span className="text-white/60 font-medium">{downloads.length} pistas guardadas</span>
                             <motion.button
@@ -115,7 +116,7 @@ export const DownloadsView: React.FC = () => {
                                 className="bg-white text-black px-8 py-3 rounded-full font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all"
                             >
                                 <Play size={18} fill="currentColor" />
-                                Reproducir todo
+                                {toSentenceCase('Reproducir todo')}
                             </motion.button>
                         </div>
                     </div>
@@ -128,7 +129,7 @@ export const DownloadsView: React.FC = () => {
                     className="mb-2 p-4 rounded-2xl border border-white/10 flex flex-col items-center gap-2 text-text-tertiary hover:text-white transition-all"
                 >
                     <FolderOpen size={24} />
-                    <span className="text-[10px] font-bold text-white/40">Abrir Carpeta</span>
+                    <span className="text-[10px] font-bold text-white/40">{toSentenceCase('Abrir carpeta')}</span>
                 </motion.button>
             </header>
 
@@ -140,12 +141,12 @@ export const DownloadsView: React.FC = () => {
                 >
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="text-[10px] font-black uppercase tracking-[0.2em] text-text-tertiary border-b border-white/5">
+                            <tr className="text-[10px] font-bold tracking-[0.1em] text-text-tertiary border-b border-white/5">
                                 <th className="px-6 py-4 w-12 text-center">#</th>
-                                <th className="px-6 py-4">Título</th>
-                                <th className="px-6 py-4">Artista</th>
-                                <th className="px-6 py-4">Formato</th>
-                                <th className="px-6 py-4 text-right">Duración</th>
+                                <th className="px-6 py-4">{toSentenceCase('Título')}</th>
+                                <th className="px-6 py-4">{toSentenceCase('Artista')}</th>
+                                <th className="px-6 py-4">{toSentenceCase('Formato')}</th>
+                                <th className="px-6 py-4 text-right">{toSentenceCase('Duración')}</th>
                                 <th className="px-6 py-4 w-12"></th>
                             </tr>
                         </thead>
@@ -155,7 +156,7 @@ export const DownloadsView: React.FC = () => {
                                     <td colSpan={6} className="py-20 text-center">
                                         <div className="flex flex-col items-center opacity-30">
                                             <Music size={48} className="mb-4" />
-                                            <p className="font-black uppercase tracking-widest text-sm">No hay música descargada</p>
+                                            <p className="font-black tracking-widest text-sm">{toSentenceCase('No hay música descargada')}</p>
                                         </div>
                                     </td>
                                 </tr>
@@ -179,7 +180,13 @@ export const DownloadsView: React.FC = () => {
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-white/10">
-                                                        <img src={track.artwork || ''} className="w-full h-full object-cover" alt={track.title} />
+                                                        {track.artwork ? (
+                                                            <img src={typeof track.artwork === 'string' ? track.artwork : ((track.artwork as any)?.medium || '')} className="w-full h-full object-cover" alt={track.title} />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-white/10 bg-white/5">
+                                                                <Music size={14} />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <span className={`font-bold ${currentTrack?.id === track.id ? 'text-primary-400' : 'text-white'}`}>
                                                         {track.title}
@@ -190,8 +197,8 @@ export const DownloadsView: React.FC = () => {
                                                 <span className="text-text-secondary font-medium">{track.artist}</span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className="text-[10px] font-black uppercase px-2 py-1 rounded-md bg-white/5 text-text-tertiary border border-white/5">
-                                                    {track.format || 'LOCAL'}
+                                                <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-white/5 text-text-tertiary border border-white/5">
+                                                    {toSentenceCase(track.format || 'Local')}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-right font-mono text-xs text-text-tertiary">

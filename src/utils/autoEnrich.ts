@@ -11,7 +11,7 @@ export async function enrichLocalTrack(filePath: string): Promise<void> {
     if ((localMetadata as any).isrc) {
       const onlineMetadata = await getTrackMetadataByISRC((localMetadata as any).isrc);
       if (onlineMetadata) {
-        await mergeAndSaveMetadata(filePath, localMetadata, onlineMetadata as any);
+        await mergeAndSaveMetadata(filePath, localMetadata, onlineMetadata);
         return;
       }
     }
@@ -150,7 +150,7 @@ async function mergeAndSaveMetadata(
 
   await addTrack(merged);
 
-  if (online.externalIds.spotify) {
+  if (online.externalIds?.spotify) {
     await setCachedMetadata(online.externalIds.spotify, online);
   }
 }

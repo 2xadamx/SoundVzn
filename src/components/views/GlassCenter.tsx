@@ -1,9 +1,81 @@
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import {
+    Play, Pause, SkipBack, SkipForward,
+    Repeat as RepeatIcon, Shuffle, ChevronDown,
+    Mic2, ListMusic
+} from 'lucide-react';
 import { usePlayerStore } from '../../store/player';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Heart } from 'lucide-react';
-import React from 'react';
+import { formatTime } from '../../utils/timeFormat';
 import clsx from 'clsx';
 import { shallow } from 'zustand/shallow';
+
+/* ──────────────────────────────────────────────────────────────
+   Comet background — organic, blurred, medium-small size
+   Directions: from top-left area → bottom-right diagonally
+   ────────────────────────────────────────────────────────────── */
+const COMETS = [
+    { delay: 0,    dur: 9,  top: '2%',   left: '-5%',  size: 2, trail: 120, opacity: 0.9  },
+    { delay: 2.5,  dur: 12, top: '-8%',  left: '35%',  size: 3, trail: 160, opacity: 0.7  },
+    { delay: 5,    dur: 8,  top: '25%',  left: '-15%', size: 2, trail: 100, opacity: 0.85 },
+    { delay: 1.5,  dur: 15, top: '-15%', left: '60%',  size: 2, trail: 80,  opacity: 0.6  },
+    { delay: 7,    dur: 10, top: '10%',  left: '-20%', size: 3, trail: 140, opacity: 0.75 },
+    { delay: 4,    dur: 11, top: '-5%',  left: '80%',  size: 2, trail: 90,  opacity: 0.65 },
+    { delay: 9,    dur: 14, top: '40%',  left: '-10%', size: 2, trail: 110, opacity: 0.55 },
+];
+
+const CometBackground = () => (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden z-[1]">
+        <style dangerouslySetInnerHTML={{ __html: `
+            @keyframes cometMove {
+                0%   { transform: translate(0, 0) rotate(35deg); opacity: 0; }
+                15%  { opacity: 1; }
+                70%  { opacity: 1; }
+                100% { transform: translate(120vw, 120vh) rotate(35deg); opacity: 0; }
+            }
+            .sv-comet {
+                position: absolute;
+                border-radius: 50%;
+                animation: cometMove linear infinite;
+            }
+            .sv-comet::before {
+                content: '';
+                position: absolute;
+                top: 50%;
+                right: 100%;
+                transform: translateY(-50%) rotate(0deg);
+                height: 1px;
+                background: linear-gradient(to right, transparent, rgba(200, 230, 255, 0.5));
+                border-radius: 9999px;
+                filter: blur(0.5px);
+            }
+        ` }} />
+        {COMETS.map((c, i) => (
+            <div key={i} className="sv-comet" style={{
+                top: c.top,
+                left: c.left,
+                width: `${c.size}px`,
+                height: `${c.size}px`,
+                background: `radial-gradient(circle, rgba(220,240,255,${c.opacity}) 0%, rgba(140,200,255,0.4) 60%, transparent 100%)`,
+                boxShadow: `0 0 ${c.size * 4}px ${c.size}px rgba(180,220,255,0.35), 0 0 ${c.size * 10}px ${c.size * 2}px rgba(100,180,255,0.12)`,
+                animationDuration: `${c.dur}s`,
+                animationDelay: `${c.delay}s`,
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    right: '100%',
+                    transform: 'translateY(-50%)',
+                    width: `${c.trail}px`,
+                    height: `${Math.max(1, c.size * 0.5)}px`,
+                    background: `linear-gradient(to right, transparent, rgba(180,220,255,0.55))`,
+                    borderRadius: '9999px',
+                    filter: 'blur(1px)',
+                }} />
+            </div>
+        ))}
+    </div>
+);
 
 interface GlassCenterProps {
     onNavigate?: (view: string, params?: any) => void;
@@ -18,11 +90,16 @@ export const GlassCenter: React.FC<GlassCenterProps> = ({ onNavigate }) => {
         playPrevious,
         currentTime,
         duration,
-        toggleFavorite,
         repeat,
-        shuffle,
         toggleRepeat,
-        toggleShuffle
+        shuffle,
+        toggleShuffle,
+        setSeekTo,
+        isLyricsOpen,
+        setIsLyricsOpen,
+        isQueueOpen,
+        setIsQueueOpen,
+        setIsGlassOpen,
     } = usePlayerStore(
         (state) => ({
             currentTrack: state.currentTrack,
@@ -32,179 +109,263 @@ export const GlassCenter: React.FC<GlassCenterProps> = ({ onNavigate }) => {
             playPrevious: state.playPrevious,
             currentTime: state.currentTime,
             duration: state.duration,
-            toggleFavorite: state.toggleFavorite,
             repeat: state.repeat,
-            shuffle: state.shuffle,
             toggleRepeat: state.toggleRepeat,
+            shuffle: state.shuffle,
             toggleShuffle: state.toggleShuffle,
+            setSeekTo: state.setSeekTo,
+            isLyricsOpen: state.isLyricsOpen,
+            setIsLyricsOpen: state.setIsLyricsOpen,
+            isQueueOpen: state.isQueueOpen,
+            setIsQueueOpen: state.setIsQueueOpen,
+            setIsGlassOpen: state.setIsGlassOpen,
         }),
         shallow
     );
 
+    const [dragActive, setDragActive] = useState(false);
+
+    // Exit fullscreen when closing
+    const handleClose = async () => {
+        setIsGlassOpen(false);
+        try {
+            if (document.fullscreenElement) await document.exitFullscreen();
+        } catch (e) {}
+    };
+
+    // Listen for ESC key to also close glass
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') handleClose();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, []);
+
+    const handleDragEnd = (_: any, info: any) => {
+        setDragActive(false);
+        const { offset, velocity } = info;
+        if (Math.abs(offset.y) > Math.abs(offset.x) && (offset.y > 50 || velocity.y > 500)) {
+            handleClose();
+        } else if (Math.abs(offset.x) > Math.abs(offset.y)) {
+            if (offset.x > 50 || velocity.x > 500) playPrevious();
+            else if (offset.x < -50 || velocity.x < -500) playNext();
+        }
+    };
+
     if (!currentTrack) return null;
 
-    const formatTime = (seconds: number) => {
-        if (!seconds || isNaN(seconds)) return '0:00';
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        setSeekTo(percent * duration);
     };
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return (
-        <div className="h-full w-full flex flex-col items-center justify-center p-8 relative">
-            <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="w-full max-w-5xl flex flex-col lg:flex-row items-center gap-16 z-10"
-            >
-                {/* Large Album Art with Glow */}
-                <div className="relative group shrink-0">
+        <motion.div
+            initial={{ opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+            className="fixed inset-0 z-[200] overflow-hidden bg-black flex flex-col font-sans"
+            style={{ height: '100dvh' }}
+        >
+            {/* ── Dynamic Ambient Background ── */}
+            {currentTrack?.artwork && (
+                <div className="absolute inset-0 z-0 pointer-events-none">
                     <motion.div
+                        className="absolute inset-[-20%] bg-cover bg-center blur-[90px] saturate-150"
+                        style={{ backgroundImage: `url(${currentTrack.artwork})` }}
                         animate={{
-                            boxShadow: isPlaying ? [
-                                "0 0 40px rgba(var(--color-primary-rgb), 0.2)",
-                                "0 0 80px rgba(var(--color-primary-rgb), 0.4)",
-                                "0 0 40px rgba(var(--color-primary-rgb), 0.2)"
-                            ] : "0 0 40px rgba(0,0,0,0.5)"
+                            scale: isPlaying ? [1, 1.04, 1] : 1,
+                            opacity: isPlaying ? [0.25, 0.4, 0.25] : 0.3,
                         }}
-                        transition={{ duration: 4, repeat: Infinity }}
-                        className="w-80 h-80 lg:w-[450px] lg:h-[450px] rounded-[60px] overflow-hidden border border-white/20 relative shadow-2xl"
-                    >
-                        {currentTrack.artwork ? (
-                            <img
-                                src={currentTrack.artwork}
-                                alt={currentTrack.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
-                            />
-                        ) : (
-                            <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                                <span className="text-white/10 text-9xl font-black">SV</span>
-                            </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </motion.div>
+                        transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/55 to-black/95" />
+                </div>
+            )}
 
-                    {/* Subtle Artistic badge */}
-                    <div className="absolute -top-4 -right-4 px-6 py-2 bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl">
-                        <span className="text-[10px] font-bold text-white/40 tracking-[0.3em] uppercase italic">Pure Fidelity</span>
+            <CometBackground />
+
+            {/* ── Top Bar ── */}
+            <div className="relative z-10 w-full flex items-center justify-between px-5 py-4 sm:px-8 sm:py-5 shrink-0">
+                {/* Close / chevron */}
+                <button
+                    onClick={handleClose}
+                    className="w-8 h-8 rounded-full bg-white/8 hover:bg-white/15 border border-white/10 text-white/60 hover:text-white transition-all backdrop-blur-xl flex items-center justify-center"
+                >
+                    <ChevronDown size={18} />
+                </button>
+
+                {/* Lyrics + Queue */}
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setIsLyricsOpen(!isLyricsOpen)}
+                        className={clsx(
+                            'w-8 h-8 rounded-full border transition-all backdrop-blur-xl flex items-center justify-center',
+                            isLyricsOpen
+                                ? 'bg-white/20 border-white/30 text-white'
+                                : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/12 hover:text-white'
+                        )}
+                        title="Letras"
+                    >
+                        <Mic2 size={15} />
+                    </button>
+                    <button
+                        onClick={() => setIsQueueOpen(!isQueueOpen)}
+                        className={clsx(
+                            'w-8 h-8 rounded-full border transition-all backdrop-blur-xl flex items-center justify-center',
+                            isQueueOpen
+                                ? 'bg-white/20 border-white/30 text-white'
+                                : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/12 hover:text-white'
+                        )}
+                        title="Cola"
+                    >
+                        <ListMusic size={15} />
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Main scrollable content ── */}
+            <motion.div
+                drag="y"
+                dragConstraints={{ top: 0, bottom: 0 }}
+                dragElastic={0.15}
+                onDragStart={() => setDragActive(true)}
+                onDragEnd={handleDragEnd}
+                className="flex-1 w-full flex flex-col items-center justify-center px-6 sm:px-10 relative z-10 cursor-grab active:cursor-grabbing overflow-hidden"
+                style={{ minHeight: 0 }}
+            >
+                {/* ── Artwork ── */}
+                <motion.div
+                    className="relative mb-7 sm:mb-9 rounded-[1.75rem] sm:rounded-[2.5rem] overflow-hidden shadow-2xl"
+                    style={{
+                        width: 'min(340px, 75vw, 42vh)',
+                        aspectRatio: '1',
+                    }}
+                    animate={{
+                        scale: dragActive ? 0.94 : (isPlaying ? 1 : 0.97),
+                        boxShadow: isPlaying
+                            ? '0 28px 60px -10px rgba(0,0,0,0.85)'
+                            : '0 14px 30px -8px rgba(0,0,0,0.6)',
+                    }}
+                    transition={{ type: 'spring', damping: 22, stiffness: 200 }}
+                >
+                    {currentTrack.artwork ? (
+                        <img
+                            src={currentTrack.artwork}
+                            alt={currentTrack.title}
+                            className="w-full h-full object-cover select-none pointer-events-none"
+                            draggable={false}
+                        />
+                    ) : (
+                        <div className="w-full h-full bg-white/8 flex items-center justify-center backdrop-blur-xl">
+                            <Mic2 size={48} className="text-white/20" />
+                        </div>
+                    )}
+                </motion.div>
+
+                {/* ── Track Info ── */}
+                <div className="w-full max-w-sm text-left mb-5 px-1">
+                    <motion.h1
+                        className="text-xl sm:text-2xl font-bold text-white truncate mb-0.5 leading-tight"
+                        layoutId={`title-${currentTrack.id}`}
+                    >
+                        {currentTrack.title}
+                    </motion.h1>
+                    <motion.p
+                        className="text-sm text-white/50 font-medium truncate"
+                        layoutId={`artist-${currentTrack.id}`}
+                    >
+                        {currentTrack.artist}
+                    </motion.p>
+                </div>
+
+                {/* ── Scrubber ── */}
+                <div className="w-full max-w-sm px-1 mb-5">
+                    <div
+                        className="h-1 w-full bg-white/10 rounded-full overflow-hidden cursor-pointer group relative"
+                        onClick={handleProgressClick}
+                    >
+                        <div
+                            className="absolute top-0 left-0 bottom-0 bg-white/80 group-hover:bg-white rounded-full pointer-events-none transition-colors"
+                            style={{ width: `${progress}%` }}
+                        />
+                    </div>
+                    <div className="flex justify-between mt-1.5 text-[10px] font-medium text-white/35 tabular-nums">
+                        <span>{formatTime(currentTime)}</span>
+                        <span>{formatTime(duration)}</span>
                     </div>
                 </div>
 
-                {/* Info & Advanced Controls */}
-                <div className="flex-1 text-center lg:text-left space-y-8 min-w-0">
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-12 items-start">
-                        <div className="space-y-8">
-                            <div>
-                                <motion.div
-                                    initial={{ x: -20, opacity: 0 }}
-                                    animate={{ x: 0, opacity: 1 }}
-                                    className="flex items-center justify-center lg:justify-start gap-3 mb-4"
-                                >
-                                    <span className="px-3 py-1 rounded-full bg-primary/20 text-primary border border-primary/30 text-[10px] font-bold tracking-widest uppercase">
-                                        Now Spinning
-                                    </span>
-                                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_#22c55e]" />
-                                </motion.div>
+                {/* ── Controls ── */}
+                <div className="w-full max-w-sm flex items-center justify-between px-1">
+                    {/* Shuffle */}
+                    <button
+                        onClick={toggleShuffle}
+                        className={clsx(
+                            'w-8 h-8 rounded-full border transition-all flex items-center justify-center',
+                            shuffle
+                                ? 'bg-white/15 border-white/25 text-white'
+                                : 'bg-transparent border-transparent text-white/30 hover:text-white/60'
+                        )}
+                    >
+                        <Shuffle size={15} />
+                    </button>
 
-                                <h1 className="text-5xl lg:text-7xl font-black text-white italic tracking-tighter mb-4 line-clamp-2 leading-none">
-                                    {currentTrack.title}
-                                </h1>
-                                <p className="text-2xl text-white/40 font-bold italic tracking-tight truncate">
-                                    {currentTrack.artist}
-                                </p>
-                            </div>
-
-                            {/* Progress Bar Premium */}
-                            <div className="space-y-4">
-                                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5 relative">
-                                    <motion.div
-                                        className="h-full bg-gradient-to-r from-primary to-secondary relative"
-                                        animate={{ width: `${progress}%` }}
-                                        transition={{ type: "spring", stiffness: 50 }}
-                                    />
-                                </div>
-                                <div className="flex justify-between text-[11px] font-bold text-white/30 font-mono tracking-widest">
-                                    <span>{formatTime(currentTime)}</span>
-                                    <span>{formatTime(duration)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Technical Insights - Removed for Rolls Royce simplicity */}
-                    </div>
-
-                    {/* Pro Controls */}
-                    <div className="flex items-center justify-center lg:justify-start gap-12">
-                        <motion.button
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
+                    {/* Prev + Play + Next */}
+                    <div className="flex items-center gap-5 sm:gap-6">
+                        <button
                             onClick={playPrevious}
-                            className="text-white/40 hover:text-white transition-all"
+                            className="text-white/60 hover:text-white hover:scale-110 active:scale-90 transition-all"
                         >
-                            <SkipBack size={32} fill="currentColor" />
-                        </motion.button>
+                            <SkipBack size={22} fill="currentColor" />
+                        </button>
 
-                        <motion.button
-                            whileHover={{ scale: 1.15 }}
-                            whileTap={{ scale: 0.9 }}
+                        <button
                             onClick={() => setIsPlaying(!isPlaying)}
-                            className="w-20 h-20 rounded-[30px] bg-white text-dark-950 flex items-center justify-center shadow-xl shadow-white/10 hover:shadow-white/20 transition-all"
+                            className="w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-white/12 backdrop-blur-xl border border-white/18 text-white flex items-center justify-center hover:bg-white/20 hover:scale-105 active:scale-95 transition-all shadow-[0_0_24px_rgba(255,255,255,0.08)]"
+                            style={{ width: '3.25rem', height: '3.25rem' }}
                         >
-                            {isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" className="ml-1.5" />}
-                        </motion.button>
+                            {isPlaying
+                                ? <Pause size={22} fill="currentColor" />
+                                : <Play size={22} fill="currentColor" className="ml-0.5" />
+                            }
+                        </button>
 
-                        <motion.button
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
+                        <button
                             onClick={playNext}
-                            className="text-white/40 hover:text-white transition-all"
+                            className="text-white/60 hover:text-white hover:scale-110 active:scale-90 transition-all"
                         >
-                            <SkipForward size={32} fill="currentColor" />
-                        </motion.button>
+                            <SkipForward size={22} fill="currentColor" />
+                        </button>
                     </div>
 
-                    <div className="flex items-center justify-center lg:justify-start gap-6 pt-4">
-                        <button
-                            onClick={toggleShuffle}
-                            className={clsx(
-                                "p-3 rounded-2xl border transition-all",
-                                shuffle ? "bg-primary/20 border-primary/50 text-primary shadow-[0_0_20px_rgba(var(--color-primary-rgb),0.3)]" : "bg-white/5 border-white/10 text-white/30"
-                            )}
-                        >
-                            <Shuffle size={20} />
-                        </button>
-                        <button
-                            onClick={toggleRepeat}
-                            className={clsx(
-                                "p-3 rounded-2xl border transition-all relative",
-                                repeat !== 'off' ? "bg-secondary/20 border-secondary/50 text-secondary shadow-[0_0_20px_rgba(var(--color-secondary-rgb),0.3)]" : "bg-white/5 border-white/10 text-white/30"
-                            )}
-                        >
-                            <Repeat size={20} />
-                            {repeat === 'one' && <span className="absolute -top-1 -right-1 text-[8px] font-bold bg-secondary text-white w-4 h-4 rounded-full flex items-center justify-center">1</span>}
-                        </button>
-                        <button
-                            onClick={toggleFavorite}
-                            className={clsx(
-                                "p-3 rounded-2xl border transition-all",
-                                currentTrack.favorite ? "bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_20px_rgba(239,68,68,0.3)]" : "bg-white/5 border-white/10 text-white/30"
-                            )}
-                        >
-                            <Heart size={20} fill={currentTrack.favorite ? "currentColor" : "none"} />
-                        </button>
-                        <button
-                            onClick={() => onNavigate?.('home')}
-                            className="p-3 rounded-2xl bg-white/5 border border-white/10 text-white/30 hover:text-white transition-all flex items-center gap-2"
-                        >
-                            <span className="text-[10px] font-bold uppercase tracking-widest px-2">Salir de Inmersión</span>
-                        </button>
-                    </div>
+                    {/* Repeat */}
+                    <button
+                        onClick={toggleRepeat}
+                        className={clsx(
+                            'w-8 h-8 rounded-full border transition-all relative flex items-center justify-center',
+                            repeat !== 'off'
+                                ? 'bg-white/15 border-white/25 text-white'
+                                : 'bg-transparent border-transparent text-white/30 hover:text-white/60'
+                        )}
+                    >
+                        <RepeatIcon size={15} />
+                        {repeat === 'one' && (
+                            <span className="absolute -top-1 -right-1 text-[7px] font-black bg-white text-black w-3 h-3 rounded-full flex items-center justify-center">
+                                1
+                            </span>
+                        )}
+                    </button>
                 </div>
             </motion.div>
 
-            {/* Ambient Overlay - Removed for clean Rolls Royce look */}
-        </div>
+            {/* ── bottom safe area padding ── */}
+            <div className="h-4 sm:h-6 shrink-0 relative z-10" />
+        </motion.div>
     );
 };

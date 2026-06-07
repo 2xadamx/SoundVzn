@@ -2,16 +2,21 @@
  * HeaderPopovers.tsx — Popovers de alta fidelidad para Perfil y Notificaciones.
  * CSS completamente alineado con el design system de SoundVizion (glassmorphism dark).
  */
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-    User, Heart, ListMusic, Settings, LogOut, Bell,
-    Check, Music2, Star, Download, Zap, Sparkles, ChevronRight, Speaker, MonitorPlay, Trash2, UserPlus, Disc3, Info, AlertTriangle
+    Bell, Check, Music2, Star, Download, Zap, Sparkles, ChevronRight, Trash2, Info, AlertTriangle,
+    UserPlus, Disc3, User, Heart, ListMusic, Settings, LogOut, Search,
+    Monitor, Volume2, VolumeX
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useNotificationsStore, NotificationType } from '../../store/notifications';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '@hooks/useTranslation';
+import { toSentenceCase } from '@utils/formatters';
+import api from '../../utils/api';
+import { usePlayerStore } from '../../store/player';
+import { safeImageSrc } from '../../utils/imageUrl';
 
 // ─── Shared Popover Shell ──────────────────────────────────────────────────────
 
@@ -30,9 +35,10 @@ const PopoverShell = React.forwardRef<HTMLDivElement, { children: React.ReactNod
             animate="visible"
             exit="exit"
             className={clsx(
-                // Mismo vidrio que el Sidebar: bg-black/20 backdrop-blur-[100px] border-white/10
-                "absolute right-0 mt-3 bg-black/60 backdrop-blur-[80px] border border-white/10",
+                "absolute top-full mt-3 bg-black/60 backdrop-blur-[80px] border border-white/10",
                 "rounded-3xl shadow-[0_30px_80px_rgba(0,0,0,0.7)] ring-1 ring-white/[0.04] z-50 overflow-hidden",
+                // En móvil: anclado a la derecha con margen para no salirse de pantalla
+                "right-0 max-w-[calc(100vw-16px)]",
                 className
             )}
         >
@@ -107,19 +113,21 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({ onCl
                         {unreadCount > 0 && (
                             <button
                                 onClick={markAllRead}
-                                className="flex items-center gap-1 text-[9px] font-bold text-white/25 hover:text-white/60 transition-colors uppercase tracking-wider"
+                                className="flex items-center gap-1 text-[9px] font-bold text-white/25 hover:text-white/60 transition-colors tracking-wider"
                                 title={t('notifications.markAllRead')}
                             >
                                 <Check size={11} />
+                                {toSentenceCase(t('notifications.markAllRead'))}
                             </button>
                         )}
                         {notifications.length > 0 && (
                             <button
                                 onClick={clearAll}
-                                className="flex items-center gap-1 text-[9px] font-bold text-white/25 hover:text-red-400/80 transition-colors uppercase tracking-wider"
+                                className="flex items-center gap-1 text-[9px] font-bold text-white/25 hover:text-red-400/80 transition-colors tracking-wider"
                                 title={t('notifications.clearAll')}
                             >
                                 <Trash2 size={11} />
+                                {toSentenceCase(t('notifications.clearAll'))}
                             </button>
                         )}
                     </div>
@@ -164,8 +172,8 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({ onCl
                 </div>
 
                 <Divider />
-                <button className="w-full flex items-center justify-center gap-1.5 py-3.5 text-[9px] font-bold text-white/25 hover:text-white/50 transition-colors uppercase tracking-widest">
-                    {t('notifications.history')}
+                <button className="w-full flex items-center justify-center gap-1.5 py-3.5 text-[9px] font-bold text-white/25 hover:text-white/50 transition-colors tracking-widest">
+                    {toSentenceCase(t('notifications.history'))}
                     <ChevronRight size={10} />
                 </button>
             </PopoverShell>
@@ -173,11 +181,16 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({ onCl
     );
 };
 
-// ─── Devices Popover ───────────────────────────────────────────────────────────
 
-export const DevicesPopover: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
+
+// ─── Friends Activity Popover ────────────────────────────────
+
+export const FriendsPopover: React.FC<{ onClose: () => void; onNavigate?: (view: string, params?: any) => void }> = ({ onClose, onNavigate }) => {
     const ref = useRef<HTMLDivElement>(null);
     const { t } = useTranslation();
+    const [friends, setFriends] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    
     useEffect(() => {
         const handler = (e: MouseEvent) => {
             if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -186,94 +199,72 @@ export const DevicesPopover: React.FC<{ onClose: () => void; }> = ({ onClose }) 
         return () => document.removeEventListener('mousedown', handler);
     }, [onClose]);
 
-    return (
-        <PopoverShell ref={ref} className="w-72">
-            <div className="flex items-center gap-2 px-5 py-4">
-                <MonitorPlay size={14} className="text-white/40" />
-                <span className="text-xs font-bold text-white/80">{t('devices.title')}</span>
-            </div>
-            <Divider />
-            <div className="p-2 py-3">
-                <button className="w-full flex items-center gap-4 px-3 py-2 rounded-xl bg-white/10 border border-white/10 transition-colors">
-                    <MonitorPlay size={16} className="text-[#0ea5e9]" />
-                    <div className="flex-1 text-left">
-                        <p className="text-xs font-bold text-[#0ea5e9] leading-tight">Este Computador</p>
-                        <p className="text-[10px] text-[#0ea5e9]/70 mt-0.5">Escuchando ahora</p>
-                    </div>
-                    <Speaker size={14} className="text-[#0ea5e9]" />
-                </button>
-            </div>
-            <Divider />
-            <div className="p-4 text-center">
-                <p className="text-xs font-semibold text-white/40 mb-3">{t('devices.empty')}</p>
-            </div>
-        </PopoverShell>
-    );
-};
-
-// ─── Friends Activity Popover ──────────────────────────────────────────────────
-
-const MOCK_FRIENDS = [
-    { id: 1, name: "Ana Torres", track: "Starboy", artist: "The Weeknd", time: "Activa ahora", online: true },
-    { id: 2, name: "David Kim", track: "Lover", artist: "Taylor Swift", time: "Hace 5m", online: false },
-    { id: 3, name: "Maria Garcia", track: "Blinding Lights", artist: "The Weeknd", time: "Hace 1h", online: false }
-];
-
-export const FriendsPopover: React.FC<{ onClose: () => void; }> = ({ onClose }) => {
-    const ref = useRef<HTMLDivElement>(null);
-    const { t } = useTranslation();
     useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [onClose]);
+        api.get('/api/social/friends')
+           .then((res: any) => setFriends(res.data))
+           .catch((err: any) => console.error(err))
+           .finally(() => setLoading(false));
+    }, []);
+
+    const handleViewAll = () => {
+        if (onNavigate) {
+            onNavigate('friends');
+        } else {
+            window.dispatchEvent(new CustomEvent('navigate-to', { detail: 'friends' }));
+        }
+        onClose();
+    };
 
     return (
-        <PopoverShell ref={ref} className="w-80">
-            <div className="flex items-center justify-between px-5 py-4">
+        <PopoverShell ref={ref} className="w-72 right-0">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3">
                 <div className="flex items-center gap-2">
                     <UserPlus size={14} className="text-white/40" />
-                    <span className="text-xs font-bold text-white/80">{t('friends.title')}</span>
+                    <span className="text-xs font-semibold text-white/80">{t('friends.title') || 'Actividad'}</span>
                 </div>
+                <button 
+                  onClick={handleViewAll}
+                  className="text-[10px] font-medium text-white/40 hover:text-white transition-colors"
+                >
+                  Ver Todo
+                </button>
             </div>
+            
             <Divider />
-            <div className="max-h-72 overflow-y-auto">
-                {MOCK_FRIENDS.map((f, i) => (
-                    <React.Fragment key={f.id}>
-                        <div className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer group">
-                            <div className="relative">
-                                <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-white/50 text-sm">
-                                    {f.name.charAt(0)}
-                                </div>
-                                {f.online && (
-                                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#12121a]"></div>
-                                )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex justify-between items-baseline mb-0.5">
-                                    <span className="text-xs font-bold text-white/90 truncate">{f.name}</span>
-                                    <span className="text-[9px] text-white/30 ml-2">{f.time}</span>
-                                </div>
-                                <p className="text-[10px] text-white/50 truncate flex items-center gap-1.5">
-                                    <Disc3 size={10} className={clsx("flex-shrink-0", f.online && "animate-spin-slow text-emerald-400")} />
-                                    <span className={clsx(f.online && "text-emerald-400/80")}>{f.track}</span>
-                                </p>
-                                <p className="text-[10px] text-white/30 truncate flex items-center gap-1.5 mt-0.5">
-                                    <User size={10} className="flex-shrink-0 invisible" />
-                                    {f.artist}
-                                </p>
-                            </div>
+            
+            <div className="max-h-60 overflow-y-auto pt-2">
+                {loading ? (
+                    <div className="px-5 py-4 text-center text-[11px] text-white/30">Cargando...</div>
+                ) : friends.length === 0 ? (
+                    <div className="px-5 py-4 text-center text-[11px] text-white/30">No hay actividad reciente.</div>
+                ) : friends.map((f, i) => (
+                    <div key={i} className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer group">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden bg-white/10 text-white/60 font-semibold text-sm ring-1 ring-white/5">
+                            {safeImageSrc(f.avatar) ? (
+                                <img src={safeImageSrc(f.avatar)!} className="w-full h-full object-cover" alt="" />
+                            ) : (
+                                f.name?.charAt(0).toUpperCase() || '?'
+                            )}
                         </div>
-                        {i < MOCK_FRIENDS.length - 1 && <Divider />}
-                    </React.Fragment>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-baseline mb-0.5">
+                                <span className="text-xs font-semibold text-white/90 truncate">{f.name}</span>
+                            </div>
+                            <p className="text-[11px] text-white/50 truncate flex items-center gap-1.5 mt-1">
+                                {f.activity?.track ? (
+                                    <>
+                                        <Disc3 size={11} className="flex-shrink-0 animate-spin-slow text-green-400 opacity-60" />
+                                        <span className="text-green-400/80">{f.activity.track}</span>
+                                    </>
+                                ) : (
+                                    <span className="text-white/30 truncate">{f.status === 'online' ? 'Conectado' : 'Desconectado'}</span>
+                                )}
+                            </p>
+                        </div>
+                    </div>
                 ))}
             </div>
-            <Divider />
-            <div className="p-4 text-center">
-                <p className="text-[10px] text-white/20">{t('friends.empty')}</p>
-            </div>
+            <div className="py-2" />
         </PopoverShell>
     );
 };
@@ -339,8 +330,8 @@ export const ProfilePopover: React.FC<ProfilePopoverProps> = ({ profile, onNavig
             <div className="p-5">
                 <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 overflow-hidden flex-shrink-0">
-                        {profile?.avatar ? (
-                            <img src={profile.avatar} className="w-full h-full object-cover" alt="" />
+                        {safeImageSrc(profile?.avatar) ? (
+                            <img src={safeImageSrc(profile?.avatar)!} className="w-full h-full object-cover" alt="" />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center">
                                 <User size={18} className="text-white/30" />
@@ -350,12 +341,7 @@ export const ProfilePopover: React.FC<ProfilePopoverProps> = ({ profile, onNavig
                     <div className="min-w-0">
                         <p className="text-sm font-bold text-white/90 truncate">{profile?.name || 'Usuario'}</p>
                         <p className="text-[10px] text-white/30 truncate">{profile?.email || ''}</p>
-                        <div className="mt-1.5 inline-flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full px-2 py-0.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400/80" />
-                            <span className="text-[9px] font-bold text-amber-400/80 uppercase tracking-wider">
-                                {profile?.tier === 'pro' ? 'Pro' : 'Standard'}
-                            </span>
-                        </div>
+                        <p className="text-[9px] text-white/20 mt-1 uppercase tracking-widest font-black">Escuchando ahora</p>
                     </div>
                 </div>
             </div>
@@ -366,7 +352,7 @@ export const ProfilePopover: React.FC<ProfilePopoverProps> = ({ profile, onNavig
                 {statItems.map(stat => (
                     <div key={stat.label} className="py-3 flex flex-col items-center gap-1">
                         <p className="text-sm font-bold text-white/80">{stat.value}</p>
-                        <p className="text-[9px] text-white/25 uppercase tracking-wider">{stat.label}</p>
+                        <p className="text-[9px] text-white/25 tracking-wider">{toSentenceCase(stat.label)}</p>
                     </div>
                 ))}
             </div>
@@ -387,11 +373,207 @@ export const ProfilePopover: React.FC<ProfilePopoverProps> = ({ profile, onNavig
                     label={t('profile.menu.logout')}
                     danger
                     onClick={() => {
+                        localStorage.removeItem('svzn_token');
+                        localStorage.removeItem('auth_access_token');
                         localStorage.removeItem('google_token');
                         window.location.reload();
                     }}
                 />
             </div>
+        </PopoverShell>
+    );
+};
+// ─── Devices Popover ──────────────────────────────────────────────────────────
+
+export const DevicesPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const { volume, setVolume, muted, toggleMute } = usePlayerStore();
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [onClose]);
+
+    // Detectar dispositivo de salida actual (solo disponible en algunos navegadores)
+    const [outputLabel, setOutputLabel] = useState<string>('Dispositivo predeterminado');
+    useEffect(() => {
+        if (!navigator.mediaDevices?.enumerateDevices) return;
+        navigator.mediaDevices.enumerateDevices().then(devices => {
+            const audioOut = devices.find(d => d.kind === 'audiooutput' && d.deviceId === 'default');
+            if (audioOut?.label) setOutputLabel(audioOut.label);
+        }).catch(() => {});
+    }, []);
+
+    return (
+        <PopoverShell ref={ref} className="w-72">
+            <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.05]">
+                <Monitor size={14} className="text-white/40" />
+                <span className="text-xs font-bold text-white/80">Dispositivos de audio</span>
+            </div>
+
+            <div className="p-4 space-y-4">
+                {/* Dispositivo activo */}
+                <div className="flex items-center gap-3 p-3 bg-white/[0.04] border border-white/[0.06] rounded-2xl">
+                    <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                        <Volume2 size={16} className="text-white/60" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-white/90 truncate">{outputLabel}</p>
+                        <p className="text-[10px] text-white/30 mt-0.5">Salida activa</p>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+                </div>
+
+                {/* Control de volumen */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Volumen</span>
+                        <span className="text-[10px] font-mono text-white/40">{Math.round((muted ? 0 : volume) * 100)}%</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button onClick={toggleMute} className="text-white/30 hover:text-white transition-colors shrink-0">
+                            {muted || volume === 0
+                                ? <VolumeX size={14} />
+                                : <Volume2 size={14} />
+                            }
+                        </button>
+                        <div className="flex-1 relative h-1.5 bg-white/10 rounded-full overflow-hidden group cursor-pointer">
+                            <div
+                                className="absolute left-0 top-0 h-full bg-white/60 group-hover:bg-white transition-colors rounded-full"
+                                style={{ width: `${(muted ? 0 : volume) * 100}%` }}
+                            />
+                            <input
+                                type="range" min="0" max="1" step="0.01"
+                                value={muted ? 0 : volume}
+                                onChange={e => setVolume(parseFloat(e.target.value), true)}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <p className="text-[9px] text-white/15 text-center tracking-widest uppercase pt-1">
+                    Para cambiar dispositivo, usa los ajustes del sistema
+                </p>
+            </div>
+        </PopoverShell>
+    );
+};
+
+// ─── Search Suggestions ───────────────────────────────────────
+
+export const SearchSuggestions: React.FC<{ query: string; results: { tracks: any[], artists: any[], albums: any[] }; onClose: () => void; onNavigate: (view: string, params?: any) => void }> = ({ query, results, onClose, onNavigate }) => {
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [onClose]);
+
+    const hasResults = results.tracks.length > 0 || results.artists.length > 0 || results.albums.length > 0;
+
+    if (!query) return null;
+
+    return (
+        <PopoverShell ref={ref} className="absolute left-0 w-full max-h-[480px] overflow-hidden flex flex-col pt-2 shadow-[0_40px_100px_rgba(0,0,0,0.8)]">
+            <div className="flex items-center gap-2 px-5 py-3 border-b border-white/[0.05]">
+                <Search size={12} className="text-primary" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Sugerencias para</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/80 truncate">"{query}"</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
+                {!hasResults ? (
+                    <div className="px-5 py-10 text-center flex flex-col items-center">
+                        <Disc3 size={24} className="text-white/10 mb-2 animate-pulse" />
+                        <p className="text-xs text-white/30 font-medium italic">No se encontraron ecos de tu búsqueda...</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4 px-2 pb-4">
+                        {results.artists.length > 0 && (
+                            <div>
+                                <h4 className="px-3 text-[9px] font-black text-white/20 uppercase tracking-[0.2em] mb-2">Artistas</h4>
+                                {results.artists.slice(0, 3).map((a: any) => (
+                                    <button 
+                                        key={a.id} 
+                                        onClick={() => { onNavigate('artist', { artistId: a.id, artistName: a.name }); onClose(); }}
+                                        className="w-full flex items-center gap-3 p-2 hover:bg-white/[0.05] rounded-xl transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-full overflow-hidden bg-white/5 ring-1 ring-white/10 group-hover:ring-primary/50 transition-all">
+                                            {a.image ? <img src={a.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-black text-xs">{a.name[0]}</div>}
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-xs font-bold text-white group-hover:text-primary transition-colors">{a.name}</p>
+                                            <p className="text-[9px] text-white/20 font-bold uppercase tracking-widest mt-0.5">Artista Verificado</p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {results.tracks.length > 0 && (
+                            <div>
+                                <h4 className="px-3 text-[9px] font-black text-white/20 uppercase tracking-[0.2em] mb-2">Canciones</h4>
+                                {results.tracks.slice(0, 5).map((t: any) => (
+                                    <button 
+                                        key={t.key || `${t.title}-${t.artist}`} 
+                                        onClick={() => { 
+                                            window.dispatchEvent(new CustomEvent('play-track', { detail: t }));
+                                            onClose(); 
+                                        }}
+                                        className="w-full flex items-center gap-3 p-2 hover:bg-white/[0.05] rounded-xl transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 ring-1 ring-white/10 transition-all">
+                                            {t.artwork?.medium ? <img src={t.artwork.medium} className="w-full h-full object-cover" /> : <Music2 size={16} className="text-white/20 m-auto" />}
+                                        </div>
+                                        <div className="text-left flex-1 min-w-0">
+                                            <p className="text-xs font-bold text-white truncate leading-tight">{t.title}</p>
+                                            <p className="text-[10px] text-white/30 font-medium truncate mt-0.5">{t.artist}</p>
+                                        </div>
+                                        <span className="text-[9px] font-mono text-white/10 pr-2 group-hover:text-primary/50 transition-colors">
+                                            {t.duration ? `${Math.floor(t.duration/60)}:${String(t.duration%60).padStart(2, '0')}` : '--:--'}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {results.albums.length > 0 && (
+                            <div>
+                                <h4 className="px-3 text-[9px] font-black text-white/20 uppercase tracking-[0.2em] mb-2">Álbumes</h4>
+                                {results.albums.slice(0, 2).map((a: any) => (
+                                    <button 
+                                        key={a.id} 
+                                        onClick={() => { onNavigate('album', { albumId: a.id, albumName: a.name }); onClose(); }}
+                                        className="w-full flex items-center gap-3 p-2 hover:bg-white/[0.05] rounded-xl transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 ring-1 ring-white/10 transition-all">
+                                            {a.image ? <img src={a.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-white/10 text-white/20"><Disc3 size={16}/></div>}
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-xs font-bold text-white truncate leading-tight group-hover:text-primary transition-colors">{a.name}</p>
+                                            <p className="text-[10px] text-white/30 truncate mt-0.5">{a.artist}</p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <button 
+                onClick={() => { onNavigate('search'); onClose(); }}
+                className="bg-white/5 hover:bg-primary hover:text-black py-3 text-[10px] font-black uppercase tracking-[0.25em] transition-all border-t border-white/[0.05]"
+            >
+                Ver todos los resultados
+            </button>
         </PopoverShell>
     );
 };

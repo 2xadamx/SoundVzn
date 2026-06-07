@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { MetadataEngine } from '../../utils/MetadataEngine';
 import { usePlayerStore } from '../../store/player';
 import { Play, ChevronLeft, Share2, Heart, ChevronRight } from 'lucide-react';
+import { ArtistDiscoveryMap } from './ArtistDiscoveryMap';
+import { normalizeArtistName } from '../../utils/formatters';
 
 interface ArtistProfileProps {
     artistId?: string;
@@ -31,7 +33,11 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artistId, artistNa
     }, [artistName, artistId]);
 
     const handlePlayTopTrack = async (index: number) => {
-        await playUnifiedCollection(profile?.topTracks || [], index);
+        await playUnifiedCollection(profile?.topTracks || [], index, {
+            type: 'artist',
+            id: artistId || profile.name,
+            name: profile.name
+        });
     };
 
     if (isLoading) {
@@ -69,7 +75,7 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artistId, artistNa
                         <span className="px-3 py-1 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-full">Artista Verificado</span>
                     </div>
                     <h1 className="text-7xl md:text-9xl font-black text-white tracking-tighter italic uppercase truncate mb-6">
-                        {profile.name}
+                        {normalizeArtistName(profile.name)}
                     </h1>
                     <div className="flex items-center gap-6">
                         <div className="flex flex-col">
@@ -173,6 +179,14 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artistId, artistNa
                 </div>
             )}
 
+            {/* Artist Discovery Map */}
+            <div className="px-4 pb-12 mx-4">
+                <ArtistDiscoveryMap
+                    rootArtist={profile.name}
+                    onNavigateArtist={(name) => onNavigate?.('artist', { artistName: name, from: 'artist' })}
+                />
+            </div>
+
             {/* Related Artists */}
             <div className="px-4 pb-20">
                 <h3 className="text-xl font-black uppercase tracking-widest text-white italic mb-6">Fans también escuchan</h3>
@@ -184,10 +198,15 @@ export const ArtistProfile: React.FC<ArtistProfileProps> = ({ artistId, artistNa
                             onClick={() => onNavigate?.('artist', { artistId: artist.id, artistName: artist.name, from: 'artist' })}
                             className="group flex flex-col items-center gap-4 text-center cursor-pointer"
                         >
-                            <div className="w-full aspect-square rounded-full overflow-hidden shadow-2xl border-4 border-white/5 group-hover:border-white/20 transition-all">
+                            <div className="w-full aspect-square rounded-full overflow-hidden shadow-2xl border-4 border-white/5 group-hover:border-white/20 transition-all relative">
                                 <img src={artist.image || profile.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt={artist.name} />
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-black shadow-xl scale-90 group-hover:scale-100 transition-transform">
+                                        <Play size={16} fill="currentColor" />
+                                    </div>
+                                </div>
                             </div>
-                            <span className="text-white font-bold text-sm tracking-tight">{artist.name}</span>
+                            <span className="text-white font-bold text-sm tracking-tight">{normalizeArtistName(artist.name)}</span>
                         </motion.div>
                     ))}
                 </div>

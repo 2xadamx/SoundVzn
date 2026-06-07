@@ -14,6 +14,7 @@ export const Player: React.FC = () => {
 
   const [showVisualizer, setShowVisualizer] = useState(false);
   const [visualizerMode, setVisualizerMode] = useState<'bars' | 'waves' | 'circular' | 'particles'>('bars');
+  const [detectedBPM, setDetectedBPM] = useState<number>(0);
 
   const {
     currentTrack,
@@ -37,6 +38,7 @@ export const Player: React.FC = () => {
     playNext,
     playPrevious,
     checkScrobble,
+    activeAudio,
   } = usePlayerStore(
     (state) => ({
       currentTrack: state.currentTrack,
@@ -60,9 +62,14 @@ export const Player: React.FC = () => {
       playNext: state.playNext,
       playPrevious: state.playPrevious,
       checkScrobble: state.checkScrobble,
+      activeAudio: state.activeAudio,
     }),
     shallow
   );
+
+  useEffect(() => {
+    setActiveRef(activeAudio === 0 ? 'A' : 'B');
+  }, [activeAudio]);
 
   const crossfadeTime = audioSettings.crossfade || 0;
   const currentAudio = activeRef === 'A' ? audioRefA.current : audioRefB.current;
@@ -74,14 +81,43 @@ export const Player: React.FC = () => {
     if (!currentAudio) return;
 
     const targetSrc = currentTrack?.filePath || '';
-    if (currentAudio.src !== targetSrc) {
-      currentAudio.src = targetSrc;
-      currentAudio.preload = 'metadata';
-      currentAudio.load();
+    if (!targetSrc) {
+      currentAudio.src = '';
+      return;
     }
 
-    if (isPlaying && targetSrc && !isTransitioning) {
-      currentAudio.play().catch(() => { });
+    // The browser normalizes src to absolute URL, so compare against currentSrc or dataset
+    const currentSrc = currentAudio.dataset.trackId || '';
+    const newTrackId = currentTrack?.id || targetSrc;
+
+    if (currentSrc !== newTrackId) {
+      currentAudio.src = targetSrc;
+      currentAudio.dataset.trackId = newTrackId;
+      currentAudio.preload = 'auto';
+      currentAudio.load();
+      console.log('[Player] Audio source set to:', targetSrc);
+    }
+
+    // Ensure volume is set before playing
+    if (!isTransitioning) {
+      currentAudio.volume = muted ? 0 : volume;
+    }
+
+    if (isPlaying && targetSrc) {
+      const playPromise = currentAudio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log('[Player] Playback started successfully');
+          })
+          .catch(error => {
+            console.warn("[Player] Playback blocked or failed:", error);
+            // Retry after a short delay
+            setTimeout(() => {
+              currentAudio.play().catch(() => {});
+            }, 500);
+          });
+      }
     } else if (!isPlaying) {
       currentAudio.pause();
     }
@@ -136,38 +172,52 @@ export const Player: React.FC = () => {
     if (isTransitioning) return;
     setIsTransitioning(true);
 
-    const steps = 20;
-    const interval = (crossfadeTime * 1000) / steps;
-    const baseVol = muted ? 0 : volume;
+    const { crossfade, setPlaybackRate } = await import('@utils/audioProcessor');
+    const { BPMEngine } = await import('@utils/BPMEngine');
 
-    // Trigger playNext in store - this will update currentTrack
-    await playNext();
+    const nextTrack = queue[currentIndex + 1];
+    if (!nextTrack) {
+      setIsTransitioning(false);
+      return;
+    }
 
-    // Swap Refs
-    setActiveRef(prev => prev === 'A' ? 'B' : 'A');
-
-    let currentStep = 0;
-    const fadeTimer = setInterval(() => {
-      currentStep++;
-      const ratio = currentStep / steps;
-
-      if (audioRefA.current && audioRefB.current) {
-        if (activeRef === 'A') {
-          // B is becoming active
-          audioRefA.current.volume = baseVol * (1 - ratio);
-          audioRefB.current.volume = baseVol * ratio;
-        } else {
-          // A is becoming active
-          audioRefB.current.volume = baseVol * (1 - ratio);
-          audioRefA.current.volume = baseVol * ratio;
-        }
+    try {
+      // 1. Prepare Next Channel
+      const nextRef = activeRef === 'A' ? 'B' : 'A';
+      const nextAudio = nextRef === 'A' ? audioRefA.current : audioRefB.current;
+      if (nextAudio) {
+        nextAudio.src = nextTrack.filePath;
+        nextAudio.load();
+        await nextAudio.play();
       }
 
-      if (currentStep >= steps) {
-        clearInterval(fadeTimer);
+      // 2. BPM Matching (Optional)
+      const currentBPM = await BPMEngine.estimateCurrentBPM(800);
+      const nextBPM = await BPMEngine.estimateCurrentBPM(800);
+      const rate = BPMEngine.calculatePlaybackRate(nextBPM, currentBPM);
+      
+      const targetChannel = nextRef === 'A' ? 0 : 1;
+      setPlaybackRate(targetChannel as any, rate);
+
+      // 3. Execute Web Audio Crossfade
+      crossfade(targetChannel as any, crossfadeTime);
+
+      // 4. Update Store
+      await playNext();
+      setActiveRef(nextRef);
+
+      // 5. Cleanup
+      setTimeout(() => {
+        setPlaybackRate(targetChannel as any, 1.0);
         setIsTransitioning(false);
-      }
-    }, interval);
+      }, crossfadeTime * 1000 + 1000);
+
+    } catch (e) {
+      console.error('Crossfade failed:', e);
+      await playNext();
+      setActiveRef(prev => prev === 'A' ? 'B' : 'A');
+      setIsTransitioning(false);
+    }
   };
 
   const handleTimeUpdate = (e: React.SyntheticEvent<HTMLAudioElement>) => {
@@ -175,6 +225,14 @@ export const Player: React.FC = () => {
     if ((activeRef === 'A' && audio === audioRefA.current) || (activeRef === 'B' && audio === audioRefB.current)) {
       setCurrentTime(audio.currentTime);
       checkScrobble();
+    }
+
+    // Periodic BPM update if visualizer is NOT open (to save CPU)
+    if (!showVisualizer && currentTime % 5 < 0.1 && isPlaying) {
+      import('@utils/BPMEngine').then(async ({ BPMEngine }) => {
+        const bpm = await BPMEngine.estimateCurrentBPM(500);
+        setDetectedBPM(prev => Math.round(prev * 0.8 + bpm * 0.2) || bpm); // Smooth it out
+      }).catch(() => { });
     }
   };
 
@@ -226,6 +284,22 @@ export const Player: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Discord Rich Presence
+  useEffect(() => {
+    if (!currentTrack || !isPlaying || !window.electron?.updatePresence) {
+      return;
+    }
+
+    window.electron.updatePresence({
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      isPlaying: isPlaying,
+      duration: duration,
+      currentTime: currentTime
+    });
+
+  }, [currentTrack?.id, isPlaying, Math.floor(currentTime / 10), duration]);
+
   if (!currentTrack) {
     return (
       <div className="h-24 bg-[#08080a] border-t border-white/5 flex items-center justify-center font-inter">
@@ -241,20 +315,32 @@ export const Player: React.FC = () => {
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
-        onError={(e) => retryStream(e.currentTarget)}
-        onStalled={(e) => retryStream(e.currentTarget)}
-        crossOrigin="anonymous"
-        preload="metadata"
+        onError={(e) => {
+          console.error('[Audio A] Error:', e.currentTarget.error?.message);
+          retryStream(e.currentTarget);
+        }}
+        onStalled={(e) => {
+          console.warn('[Audio A] Stalled');
+          retryStream(e.currentTarget);
+        }}
+        onCanPlay={(e) => isPlaying && !isTransitioning && activeRef === 'A' && e.currentTarget.play().catch(() => {})}
+        preload="auto"
       />
       <audio
         ref={audioRefB}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
-        onError={(e) => retryStream(e.currentTarget)}
-        onStalled={(e) => retryStream(e.currentTarget)}
-        crossOrigin="anonymous"
-        preload="metadata"
+        onError={(e) => {
+          console.error('[Audio B] Error:', e.currentTarget.error?.message);
+          retryStream(e.currentTarget);
+        }}
+        onStalled={(e) => {
+          console.warn('[Audio B] Stalled');
+          retryStream(e.currentTarget);
+        }}
+        onCanPlay={(e) => isPlaying && !isTransitioning && activeRef === 'B' && e.currentTarget.play().catch(() => {})}
+        preload="auto"
       />
 
       <AnimatePresence>
@@ -298,25 +384,37 @@ export const Player: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <div className="h-24 bg-[#08080a]/90 backdrop-blur-3xl border-t border-white/5 flex items-center px-8 relative z-[100] font-inter">
+      <div className="h-28 bg-[#08080a]/95 backdrop-blur-3xl border-t border-white/[0.06] flex flex-col relative z-[100] font-inter">
+        {/* ── TIMELINE ── visible, centrada verticalmente en la parte superior */}
         {!currentTrack.isLive && (
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/[0.02] group cursor-pointer overflow-visible">
+          <div className="relative h-1 mx-0 group cursor-pointer flex-shrink-0" style={{ marginTop: 0 }}>
+            {/* Track background */}
+            <div className="absolute inset-0 bg-white/[0.06] rounded-none" />
+            {/* Progress fill */}
             <div
-              className="absolute left-0 top-0 h-full bg-primary-500 shadow-[0_0_10px_rgba(59,130,246,1)] transition-all"
+              className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-none"
               style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
             />
+            {/* Thumb dot — visible on hover */}
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              style={{ left: `calc(${duration ? (currentTime / duration) * 100 : 0}% - 6px)` }}
+            />
+            {/* Invisible wide input for easy interaction */}
             <input
               type="range"
               min="0"
               max={duration || 0}
               value={currentTime}
               onChange={handleSeek}
-              className="absolute inset-0 w-full h-8 -top-4 opacity-0 cursor-pointer z-10"
+              className="absolute inset-0 w-full opacity-0 cursor-pointer"
+              style={{ height: '20px', top: '-9px' }}
             />
           </div>
         )}
 
-        <div className="flex items-center gap-5 flex-1 min-w-0">
+        {/* ── CONTROLS ROW ── */}
+        <div className="flex items-center px-6 flex-1 gap-4">
           <motion.div
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -342,7 +440,6 @@ export const Player: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
 
         <div className="flex-[1.5] flex flex-col items-center gap-2">
           <div className="flex items-center gap-8">
@@ -421,6 +518,16 @@ export const Player: React.FC = () => {
             </p>
           </div>
 
+          <div className="flex flex-col items-center justify-center px-4 py-2 bg-primary-500/5 border border-primary-500/10 rounded-2xl min-w-[70px]">
+            <span className="text-[8px] font-black text-primary-400/40 uppercase tracking-widest leading-none">Tempo</span>
+            <div className="flex items-center gap-1">
+              <span className="text-sm font-black text-primary-400 italic">
+                {detectedBPM || '--'}
+              </span>
+              <span className="text-[8px] font-bold text-primary-400/60">BPM</span>
+            </div>
+          </div>
+
           <div className="flex items-center gap-4">
             <button onClick={toggleMute} className="text-white/30 hover:text-white transition-colors outline-none">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -449,6 +556,7 @@ export const Player: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </>
   );

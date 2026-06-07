@@ -10,7 +10,7 @@ function pushNotification(
 ) {
   const { addNotification } = useNotificationsStore.getState();
   const title = translate(titleKey, undefined, params);
-  const body = translate(bodyKey, undefined, params);
+  const body  = translate(bodyKey,  undefined, params);
   addNotification(title, body, type);
 }
 
@@ -26,12 +26,8 @@ export const notificationService = {
   favoriteChanged(trackTitle: string, added: boolean) {
     pushNotification(
       'star',
-      added
-        ? 'notifications.favorites.added.title'
-        : 'notifications.favorites.removed.title',
-      added
-        ? 'notifications.favorites.added.body'
-        : 'notifications.favorites.removed.body',
+      added ? 'notifications.favorites.added.title'   : 'notifications.favorites.removed.title',
+      added ? 'notifications.favorites.added.body'    : 'notifications.favorites.removed.body',
       { track: trackTitle }
     );
   },
@@ -39,12 +35,8 @@ export const notificationService = {
   offlineToggled(enabled: boolean) {
     pushNotification(
       'system',
-      enabled
-        ? 'notifications.system.offlineEnabled.title'
-        : 'notifications.system.offlineDisabled.title',
-      enabled
-        ? 'notifications.system.offlineEnabled.body'
-        : 'notifications.system.offlineDisabled.body'
+      enabled ? 'notifications.system.offlineEnabled.title'  : 'notifications.system.offlineDisabled.title',
+      enabled ? 'notifications.system.offlineEnabled.body'   : 'notifications.system.offlineDisabled.body'
     );
   },
 
@@ -74,4 +66,36 @@ export const notificationService = {
       { track: trackTitle }
     );
   },
+
+  discoveryToggled(enabled: boolean) {
+    pushNotification(
+      'system',
+      enabled ? 'notifications.system.discoveryEnabled.title'  : 'notifications.system.discoveryDisabled.title',
+      enabled ? 'notifications.system.discoveryEnabled.body'   : 'notifications.system.discoveryDisabled.body'
+    );
+  },
+
+  moodLockToggled(enabled: boolean, mood: string) {
+    pushNotification(
+      'info',
+      enabled ? 'notifications.moodLock.enabled.title' : 'notifications.moodLock.disabled.title',
+      enabled ? 'notifications.moodLock.enabled.body'  : 'notifications.moodLock.disabled.body',
+      { mood }
+    );
+  },
+
+  info(message: string) {
+    const { addNotification } = useNotificationsStore.getState();
+    addNotification('Info', message, 'info');
+  },
+
+  success(message: string) {
+    const { addNotification } = useNotificationsStore.getState();
+    addNotification('✓', message, 'system');
+  },
+
+  error(message: string) {
+    const { addNotification } = useNotificationsStore.getState();
+    addNotification('Error', message, 'alert');
+  }
 };

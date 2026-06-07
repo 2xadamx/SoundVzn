@@ -35,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView }) => 
       label: 'Tu Música',
       items: [
         { id: 'favorites', label: 'Favoritos', icon: '❤️' },
+        { id: 'recent', label: 'Recientes', icon: '🕒' },
         { id: 'downloads', label: 'Descargas', icon: '📥' },
         { id: 'liked-artists', label: 'Artistas Followed', icon: '🎤' },
       ]
@@ -85,16 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView }) => 
           {/* subtle glow */}
           <div className="absolute inset-x-0 top-0 h-full bg-white/5 blur-3xl rounded-full opacity-20 pointer-events-none" />
 
-          {tier === 'pro' && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-600 px-3 py-1 rounded-full border border-amber-300/30 shadow-lg shadow-amber-500/20"
-            >
-              <Crown size={10} className="text-dark-950 fill-current" />
-              <span className="text-[9px] font-bold text-dark-950 tracking-wide">SoundVzn Pro</span>
-            </motion.div>
-          )}
+          {/* Badge de Pro eliminado */}
         </div>
 
         {/* Navigation */}

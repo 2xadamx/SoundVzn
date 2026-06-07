@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Mic, User, ArrowRight } from 'lucide-react';
 import { getLikedArtists } from '../../utils/database';
+import { normalizeArtistName } from '../../utils/formatters';
+import { Mic, User, Play } from 'lucide-react';
 
 interface LikedArtistsViewProps {
     onNavigate: (view: string, params?: any) => void;
@@ -74,26 +75,27 @@ export const LikedArtistsView: React.FC<LikedArtistsViewProps> = ({ onNavigate }
                             onClick={() => onNavigate('artist', { artistId: artist.id, artistName: artist.name })}
                             className="group relative bg-white/[0.03] hover:bg-white/[0.07] p-5 rounded-[32px] border border-white/5 transition-all cursor-pointer overflow-hidden shadow-xl"
                         >
-                            <div className="aspect-square rounded-full overflow-hidden mb-5 border-4 border-white/5 group-hover:border-primary-500/20 transition-all shadow-inner">
+                            <div className="aspect-square rounded-full overflow-hidden mb-5 border-4 border-white/5 group-hover:border-primary-500/20 transition-all shadow-inner relative">
                                 <img
                                     src={artist.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(artist.name)}&background=random&size=200`}
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                                     alt={artist.name}
                                 />
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-black shadow-xl scale-90 group-hover:scale-100 transition-transform">
+                                        <Play size={16} fill="currentColor" />
+                                    </div>
+                                </div>
                             </div>
                             <div className="text-center">
                                 <h3 className="text-white font-black uppercase tracking-tight text-lg truncate mb-1">
-                                    {artist.name}
+                                    {normalizeArtistName(artist.name)}
                                 </h3>
                                 <p className="text-[10px] text-text-tertiary font-black uppercase tracking-[0.2em] opacity-50 group-hover:opacity-100 group-hover:text-primary-400 transition-all">
                                     Artista Verificado
                                 </p>
                             </div>
 
-                            {/* Hover overlay with arrow */}
-                            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ArrowRight className="text-primary-400" size={20} />
-                            </div>
                         </motion.div>
                     ))}
                 </div>

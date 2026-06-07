@@ -41,6 +41,12 @@ export async function initCacheDB(): Promise<void> {
   if (db) return;
 
   try {
+    // Check if IndexedDB is even available
+    if (typeof indexedDB === 'undefined') {
+      isCacheEnabled = false;
+      return;
+    }
+
     db = await openDB<CacheDB>('soundvzn-cache', 1, {
       upgrade(database) {
         if (!database.objectStoreNames.contains('search-cache')) {
@@ -55,7 +61,7 @@ export async function initCacheDB(): Promise<void> {
       },
     });
   } catch (error) {
-    console.error('Critical: Failed to initialize IndexedDB cache:', error);
+    console.warn('[CacheManager] IndexedDB blocked or corrupted. Disabling cache.', error);
     isCacheEnabled = false;
     db = null;
   }
@@ -190,8 +196,74 @@ export async function clearMetadataCache(): Promise<void> {
   try {
     await db.clear('metadata-cache');
     await db.clear('search-cache');
+    console.log('[CacheManager] Metadata and Search cache cleared manually.');
   } catch (error) {
     console.error('Failed to clear metadata cache:', error);
+  }
+}
+
+export async function forceClearAll(): Promise<void> {
+  if (!db) await initCacheDB();
+  if (!db) return;
+  try {
+    await db.clear('metadata-cache');
+    await db.clear('search-cache');
+    await db.clear('artwork-cache');
+    console.log('[CacheManager] Full cache wipe completed.');
+  } catch (error) {
+    console.error('Failed to wipe all cache:', error);
+  }
+}
+
+/**
+ * Proactive cleanup: remove expired items and limit artwork cache size.
+ */
+export async function performMaintenance(): Promise<void> {
+  if (!db) await initCacheDB();
+  if (!db || !isCacheEnabled) return;
+
+  try {
+    const now = Date.now();
+
+    // 1. Cleanup expired search & metadata
+    const tx = db.transaction(['search-cache', 'metadata-cache', 'artwork-cache'], 'readwrite');
+
+    // Manual iteration for search-cache
+    let searchStore = tx.objectStore('search-cache');
+    let searchCursor = await searchStore.openCursor();
+    while (searchCursor) {
+      if (now - searchCursor.value.timestamp > SEARCH_TTL) {
+        await searchCursor.delete();
+      }
+      searchCursor = await searchCursor.continue();
+    }
+
+    // Manual iteration for metadata-cache
+    let metaStore = tx.objectStore('metadata-cache');
+    let metaCursor = await metaStore.openCursor();
+    while (metaCursor) {
+      if (now - metaCursor.value.timestamp > METADATA_TTL) {
+        await metaCursor.delete();
+      }
+      metaCursor = await metaCursor.continue();
+    }
+
+    // 2. Limit artwork cache (Max 200 items, LRU-ish by timestamp)
+    let artStore = tx.objectStore('artwork-cache');
+    const count = await artStore.count();
+    if (count > 200) {
+      const artworks = await artStore.getAll();
+      artworks.sort((a, b) => a.timestamp - b.timestamp);
+      const toDelete = artworks.slice(0, count - 200);
+      for (const item of toDelete) {
+        await artStore.delete(item.url);
+      }
+    }
+
+    await tx.done;
+    console.log('[CacheManager] Maintenance completed.');
+  } catch (error) {
+    console.warn('[CacheManager] Maintenance failed:', error);
   }
 }
 

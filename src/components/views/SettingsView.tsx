@@ -124,20 +124,28 @@ const SLEEP_OPTIONS = [
 export const SettingsView: React.FC = () => {
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [storageSize, setStorageSize] = useState<any>(null);
     const [sleepRemaining, setSleepRemaining] = useState<number | null>(null);
     const [isBugReportOpen, setIsBugReportOpen] = useState(false);
     const [currentView, setCurrentView] = useState<'settings' | 'privacy' | 'terms'>('settings');
     const sleepIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+    // ── Reactive store values (proper hooks, not getState() in JSX) ──
     const {
         appearance, setAppearance,
         language, setLanguage,
         streamingQuality, setStreamingQuality,
         dataSaver, setDataSaver,
         offlineMode, setOfflineMode,
+        enableInstantPreview, setEnableInstantPreview,
         setSleepTimer,
         setIsPlaying,
+        audioSettings,
+        updateAudioSettings,
     } = usePlayerStore();
+
+    const crossfade = audioSettings.crossfade;
+    const replayGain = audioSettings.replayGain;
 
     useEffect(() => {
         loadData();
@@ -146,6 +154,25 @@ export const SettingsView: React.FC = () => {
     const loadData = async () => {
         const p = await getProfile();
         setProfile(p);
+        if (typeof (window as any).electron?.getStorageSize === 'function') {
+            const sizeData = await (window as any).electron.getStorageSize();
+            // Normalize: electron returns number (bytes), web returns { formatted }
+            if (typeof sizeData === 'number') {
+                setStorageSize({ formatted: `${(sizeData / (1024 * 1024)).toFixed(1)} MB` });
+            } else {
+                setStorageSize(sizeData);
+            }
+        } else if (navigator.storage && navigator.storage.estimate) {
+            try {
+                const estimate = await navigator.storage.estimate();
+                const usageMB = ((estimate.usage || 0) / (1024 * 1024)).toFixed(2);
+                setStorageSize({ formatted: `${usageMB} MB` });
+            } catch (e) {
+                setStorageSize({ formatted: 'Desconocido' });
+            }
+        } else {
+            setStorageSize({ formatted: 'Web Cache' });
+        }
         setLoading(false);
     };
 
@@ -189,26 +216,69 @@ export const SettingsView: React.FC = () => {
         return `${m}:${sec.toString().padStart(2, '0')}`;
     };
 
-    if (loading || !profile) return null;
+    if (loading || !profile) return (
+        <div className="flex items-center justify-center h-[60vh]">
+            <div className="w-8 h-8 border-t-2 border-white/20 rounded-full animate-spin" />
+        </div>
+    );
 
     if (currentView === 'privacy') return <PrivacyView onBack={() => setCurrentView('settings')} />;
     if (currentView === 'terms') return <TermsView onBack={() => setCurrentView('settings')} />;
 
     return (
         <div className="max-w-2xl mx-auto pb-48 px-4">
+
+            {/* ── Apariencia ── */}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.02 }}>
+                <Card>
+                    <SectionHeader icon={Palette} title="Apariencia" subtitle="Tema visual de la app" />
+                    <div className="grid grid-cols-3 gap-3">
+                        {THEME_OPTIONS.map(opt => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setAppearance(opt.value as any)}
+                                className={clsx(
+                                    "py-3 px-2 rounded-2xl text-xs font-bold transition-all border text-center",
+                                    appearance === opt.value
+                                        ? "bg-white text-black border-white shadow-lg"
+                                        : "bg-white/5 text-white/50 border-white/5 hover:bg-white/10 hover:text-white"
+                                )}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                </Card>
+            </motion.div>
+
+            {/* ── Audio FX ── */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
                 <Card>
-                    <SectionHeader icon={Palette} title="Apariencia" subtitle="Personalización visual" />
-                    <SettingRow label="Tema del sistema" description="Cambia el estilo visual de la aplicación">
-                        <SelectChip
-                            value={appearance}
-                            onChange={(v) => setAppearance(v as any)}
-                            options={THEME_OPTIONS}
+                    <SectionHeader icon={Activity} title="Audio FX" subtitle="Procesamiento y transiciones" />
+                    <SettingRow
+                        label="Crossfade nativo"
+                        description={`Transición suave entre pistas (${crossfade}s)`}
+                    >
+                        <div className="flex items-center gap-3 w-40">
+                            <input
+                                type="range" min="0" max="12" step="1"
+                                value={crossfade}
+                                onChange={(e) => updateAudioSettings({ crossfade: parseInt(e.target.value) })}
+                                className="w-full accent-white h-1 bg-white/10 rounded-full appearance-none cursor-pointer"
+                            />
+                            <span className="text-[10px] font-mono text-white/40 w-6 shrink-0">{crossfade}s</span>
+                        </div>
+                    </SettingRow>
+                    <SettingRow label="Normalización de audio" description="Ajusta el volumen de las pistas para un nivel uniforme">
+                        <Toggle
+                            checked={replayGain}
+                            onChange={(v) => updateAudioSettings({ replayGain: v })}
                         />
                     </SettingRow>
                 </Card>
             </motion.div>
 
+            {/* ── Idioma ── */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.10 }}>
                 <Card>
                     <SectionHeader icon={Globe} title="Idioma" subtitle="Interfaz y contenido" />
@@ -225,10 +295,11 @@ export const SettingsView: React.FC = () => {
                 </Card>
             </motion.div>
 
+            {/* ── Reproducción ── */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
                 <Card>
                     <SectionHeader icon={Wifi} title="Reproducción" subtitle="Streaming y calidad de audio" />
-                    <SettingRow label="Calidad de streaming (WiFi)" description="Calidad máxima para una experiencia pura">
+                    <SettingRow label="Calidad de streaming" description="Calidad máxima para una experiencia pura">
                         <SelectChip
                             value={streamingQuality}
                             onChange={(v) => setStreamingQuality(v as any)}
@@ -242,12 +313,16 @@ export const SettingsView: React.FC = () => {
                     <SettingRow label="Ahorro de datos" description="Reduce calidad de streaming en red móvil">
                         <Toggle checked={dataSaver} onChange={setDataSaver} />
                     </SettingRow>
-                    <SettingRow label="Priorizar auto-preload" description="Acelera el cambio entre canciones">
+                    <SettingRow label="Preload instantáneo" description="Precarga la siguiente canción para cambios sin cortes">
+                        <Toggle checked={enableInstantPreview} onChange={setEnableInstantPreview} />
+                    </SettingRow>
+                    <SettingRow label="Modo sin conexión" description="Reproduce solo música descargada localmente">
                         <Toggle checked={offlineMode} onChange={setOfflineMode} />
                     </SettingRow>
                 </Card>
             </motion.div>
 
+            {/* ── Temporizador de sueño ── */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.20 }}>
                 <Card>
                     <SectionHeader
@@ -256,47 +331,59 @@ export const SettingsView: React.FC = () => {
                         subtitle={sleepRemaining !== null ? `Pausando en ${formatSleepRemaining(sleepRemaining)}` : "Pausa la música automáticamente"}
                     />
                     <div className="grid grid-cols-3 gap-2">
-                        {SLEEP_OPTIONS.map(opt => (
-                            <button
-                                key={opt.value}
-                                onClick={() => handleSleepTimer(opt.value)}
-                                className={clsx(
-                                    "py-3 rounded-2xl text-xs font-bold transition-all border",
-                                    sleepRemaining !== null && opt.value !== 0 && opt.value === Math.ceil((sleepRemaining || 0) / 60)
-                                        ? "bg-white text-black border-white shadow-lg"
-                                        : opt.value === 0 && sleepRemaining === null
-                                            ? "bg-white/10 text-white border-white/20"
-                                            : "bg-white/5 text-white/50 border-white/5 hover:bg-white/10 hover:text-white"
-                                )}
-                            >
-                                {opt.value === 0 && sleepRemaining !== null ? 'Cancelar' : opt.label}
-                            </button>
-                        ))}
+                        {SLEEP_OPTIONS.map(opt => {
+                            const isActive = sleepRemaining !== null && opt.value !== 0 &&
+                                opt.value * 60 >= (sleepRemaining - 60) && opt.value * 60 <= (sleepRemaining + 60);
+                            const isOff = opt.value === 0 && sleepRemaining === null;
+                            return (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => handleSleepTimer(opt.value)}
+                                    className={clsx(
+                                        "py-3 rounded-2xl text-xs font-bold transition-all border",
+                                        isActive ? "bg-white text-black border-white shadow-lg"
+                                            : isOff ? "bg-white/10 text-white border-white/20"
+                                                : "bg-white/5 text-white/50 border-white/5 hover:bg-white/10 hover:text-white"
+                                    )}
+                                >
+                                    {opt.value === 0 && sleepRemaining !== null ? 'Cancelar' : opt.label}
+                                </button>
+                            );
+                        })}
                     </div>
                 </Card>
             </motion.div>
 
+            {/* ── Almacenamiento ── */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
                 <Card>
-                    <SectionHeader icon={HardDrive} title="Almacenamiento" subtitle="Gestión de caché (Límite: 1GB)" />
+                    <SectionHeader icon={HardDrive} title="Almacenamiento" subtitle="Gestión de caché" />
                     <div className="space-y-4">
                         <div className="flex justify-between items-center px-1">
                             <div>
                                 <p className="text-xs font-bold text-white/80">Caché de sistema</p>
-                                <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">Limpieza cada 12h</p>
+                                <p className="text-[10px] text-white/30 uppercase tracking-widest mt-1">Limpieza automática cada 12h</p>
                             </div>
-                            <span className="text-sm font-mono text-white/70">Calculando...</span>
+                            <span className="text-sm font-mono text-white/70">{storageSize?.formatted || '—'}</span>
                         </div>
                         <div className="flex gap-3 pt-2">
                             <button
                                 onClick={async () => {
-                                    if (window.electron?.clearCache) {
-                                        const ok = confirm("¿Estás seguro de que quieres limpiar la caché?");
-                                        if (ok) {
+                                    if (confirm("¿Limpiar la caché? Los datos de usuario no se borrarán.")) {
+                                        if (window.electron?.clearCache) {
                                             await window.electron.clearCache();
-                                            alert("Caché limpiada correctamente.");
-                                            loadData();
+                                        } else {
+                                            try {
+                                                if ('caches' in window) {
+                                                    const names = await caches.keys();
+                                                    await Promise.all(names.map(n => caches.delete(n)));
+                                                }
+                                            } catch (e) {
+                                                console.error('Error clearing web caches', e);
+                                            }
                                         }
+                                        usePlayerStore.getState().addToast({ type: 'success', message: 'Caché limpiada', duration: 3000 });
+                                        loadData();
                                     }
                                 }}
                                 className="flex-1 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-xs font-bold text-white/50 hover:text-white transition-all active:scale-[0.98]"
@@ -314,39 +401,50 @@ export const SettingsView: React.FC = () => {
                 </Card>
             </motion.div>
 
+            {/* ── Cuenta ── */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.30 }}>
-                <Card className="border-primary-500/20 bg-primary-500/5">
-                    <SectionHeader icon={Activity} title="Diagnóstico de Errores" subtitle="Herramientas para betatesters" />
+                <Card className="border-rose-500/20 bg-rose-500/5">
+                    <SectionHeader icon={ShieldCheck} title="Gestión de Cuenta" subtitle="Seguridad y privacidad" />
                     <div className="space-y-3">
+                        <div className="flex items-center justify-between py-2">
+                            <div>
+                                <p className="text-sm font-bold text-white/80">{profile.name}</p>
+                                <p className="text-[10px] text-white/30 truncate">{profile.email}</p>
+                            </div>
+                            <span className="px-3 py-1 rounded-full bg-white/10 text-[9px] font-bold text-white/60 uppercase tracking-widest border border-white/5">
+                                {profile.tier === 'pro' ? 'Supreme Pro' : 'Free Tier'}
+                            </span>
+                        </div>
+                        <div className="h-px bg-white/5 my-2" />
                         <button
                             onClick={() => setIsBugReportOpen(true)}
-                            className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-[13px] font-bold text-white transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                            className="w-full py-3 hover:bg-white/5 border border-white/5 rounded-2xl text-[11px] font-bold text-white/40 hover:text-white transition-all flex items-center justify-center gap-3"
                         >
-                            <Bug size={16} className="text-primary-500" />
-                            Reportar un Error / Feedback
+                            <Bug size={14} /> Reportar un problema
+                        </button>
+                        <button
+                            onClick={() => { if (confirm("¿Eliminar cuenta? Esta acción es irreversible.")) alert("Solicitud enviada al administrador."); }}
+                            className="w-full py-3 hover:bg-rose-500/10 border border-white/5 rounded-2xl text-[11px] font-bold text-rose-500/50 hover:text-rose-500 transition-all flex items-center justify-center gap-3"
+                        >
+                            Eliminar mi cuenta definitivamente
                         </button>
                     </div>
                 </Card>
             </motion.div>
 
-            <BugReportModal
-                isOpen={isBugReportOpen}
-                onClose={() => setIsBugReportOpen(false)}
-                userEmail={profile.email}
-            />
-
+            {/* ── Legal ── */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
                 <Card>
                     <SectionHeader icon={ShieldCheck} title="Legal & Privacidad" />
                     <div className="grid grid-cols-1 gap-1">
                         {[
-                            { label: 'Política de Privacidad', view: 'privacy' },
-                            { label: 'Términos de Servicio', view: 'terms' },
+                            { label: 'Política de Privacidad', view: 'privacy' as const },
+                            { label: 'Términos de Servicio', view: 'terms' as const },
                             { label: 'Licencias Open Source', href: 'https://soundvizion.app/licenses' },
                         ].map(link => (
                             <button
                                 key={link.label}
-                                onClick={() => link.view ? setCurrentView(link.view as any) : window.open(link.href, '_blank')}
+                                onClick={() => link.view ? setCurrentView(link.view) : window.open(link.href, '_blank')}
                                 className="w-full flex items-center justify-between py-3.5 px-3 rounded-xl hover:bg-white/5 text-sm text-white/50 hover:text-white transition-all group"
                             >
                                 {link.label}
@@ -362,6 +460,12 @@ export const SettingsView: React.FC = () => {
                     </div>
                 </Card>
             </motion.div>
+
+            <BugReportModal
+                isOpen={isBugReportOpen}
+                onClose={() => setIsBugReportOpen(false)}
+                userEmail={profile.email}
+            />
         </div>
     );
 };

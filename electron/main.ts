@@ -1,13 +1,63 @@
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, dialog, shell } = electron;
+const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut } = electron;
+import axios from 'axios';
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import fs from 'node:fs';
 import { fork, ChildProcess } from 'node:child_process';
+const DiscordRPC = require('discord-rpc');
+
+// ——— Discord Rich Presence ———
+const DISCORD_CLIENT_ID = '1484558840715284593';
+let rpc: any = null;
+let rpcReady = false;
+
+function initDiscordRPC() {
+    if (rpc) return;
+    rpc = new DiscordRPC.Client({ transport: 'ipc' });
+    
+    rpc.on('ready', () => {
+        console.log('[Discord] Rich Presence Ready');
+        rpcReady = true;
+        setInitialPresence();
+    });
+
+    rpc.login({ clientId: DISCORD_CLIENT_ID }).catch((err: any) => {
+        console.error('[Discord] RPC login failed:', err);
+    });
+}
+
+function setInitialPresence() {
+    if (!rpcReady) return;
+    rpc.setActivity({
+        details: 'Navegando en SoundVzn',
+        state: 'Preparado para el sonido',
+        instance: false,
+    });
+}
+
+function updateDiscordPresence(data: { title: string; artist: string; isPlaying: boolean; duration: number; currentTime: number }) {
+    if (!rpcReady || !rpc) return;
+    
+    const activity: any = {
+        details: data.title,
+        state: `por ${data.artist}`,
+        instance: false,
+    };
+
+    if (data.isPlaying && data.duration > 0) {
+        const startTimestamp = Date.now();
+        const endTimestamp = startTimestamp + (data.duration - data.currentTime) * 1000;
+        activity.startTimestamp = startTimestamp;
+        activity.endTimestamp = endTimestamp;
+    }
+
+    rpc.setActivity(activity).catch(console.error);
+}
 
 // Log crash to file
 const logPath = path.join(process.cwd(), 'startup-error.log');
@@ -45,6 +95,7 @@ const __dirname = path.dirname(__filename);
 
 
 let mainWindow: any = null;
+let miniPlayerWindow: any = null;
 let backendProcess: ChildProcess | null = null;
 let isQuitting = false;
 
@@ -95,7 +146,19 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+    if (process.env.VITE_DEV_SERVER_URL) {
+       mainWindow.webContents.openDevTools();
+    }
   });
+
+  // Failsafe: If ready-to-show doesn't fire, show anyway after 3s
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('Forcing show window...');
+      mainWindow.show();
+      if (process.env.VITE_DEV_SERVER_URL) mainWindow.webContents.openDevTools();
+    }
+  }, 3000);
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -106,6 +169,84 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    globalShortcut.unregisterAll();
+    if (miniPlayerWindow) miniPlayerWindow.close();
+  });
+
+  registerGlobalShortcuts(mainWindow);
+}
+
+function registerGlobalShortcuts(win: any) {
+  // Clear any existing
+  globalShortcut.unregisterAll();
+
+  // Media Keys
+  globalShortcut.register('MediaPlayPause', () => {
+    win.webContents.send('player:toggle-play');
+  });
+
+  globalShortcut.register('MediaNextTrack', () => {
+    win.webContents.send('player:next');
+  });
+
+  globalShortcut.register('MediaPreviousTrack', () => {
+    win.webContents.send('player:prev');
+  });
+
+  // Custom Pro Shortcuts
+  globalShortcut.register('Alt+P', () => {
+    win.webContents.send('player:toggle-play');
+  });
+
+  globalShortcut.register('Alt+S', () => {
+    win.webContents.send('navigation:go-to', 'search');
+    win.show();
+    win.focus();
+  });
+
+  // Mini-player toggle
+  globalShortcut.register('Alt+M', () => {
+    ipcMain.emit('window:toggle-mini-player');
+  });
+}
+
+function createMiniPlayerWindow() {
+  if (miniPlayerWindow) {
+    miniPlayerWindow.focus();
+    return;
+  }
+
+  const preloadPath = path.join(__dirname, 'preload.js');
+
+  miniPlayerWindow = new BrowserWindow({
+    width: 320,
+    height: 160,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    backgroundColor: '#0a0a0a',
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    show: false,
+    skipTaskbar: true,
+  });
+
+  if (process.env.VITE_DEV_SERVER_URL) {
+    miniPlayerWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}#/mini-player`);
+  } else {
+    // Note: React HashRouter is recommended for easier routing in Electron
+    miniPlayerWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'mini-player' });
+  }
+
+  miniPlayerWindow.once('ready-to-show', () => {
+    miniPlayerWindow.show();
+  });
+
+  miniPlayerWindow.on('closed', () => {
+    miniPlayerWindow = null;
   });
 }
 
@@ -116,34 +257,54 @@ app.whenReady().then(() => {
     callback(true); // Permitir todos los permisos de media
   });
 
-  try {
+  if (process.env.VITE_DEV_SERVER_URL) {
+    console.log('[Main] Dev server detected; using standalone backend, skipping Electron backend fork.');
+  } else try {
     const backendEntry = path.join(__dirname, 'backend.js');
+    console.log(`[Main] Attempting to fork backend from: ${backendEntry}`);
+
+    if (!fs.existsSync(backendEntry)) {
+      console.error(`[Main] CRITICAL ERROR: backend.js not found at ${backendEntry}`);
+      // In dev, we might want to fall back or just fail loudly
+    }
+
     backendProcess = fork(backendEntry, [], {
-      env: { ...process.env, SOUNDVZN_USER_DATA: app.getPath('userData') },
+      env: { ...process.env, SOUNDVZN_USER_DATA: app.getPath('userData'), NODE_ENV: process.env.VITE_DEV_SERVER_URL ? 'development' : 'production' },
       stdio: 'inherit',
     });
+
+    backendProcess.on('error', (err) => {
+      console.error('[Main] Backend process fork error:', err);
+      logError(err);
+    });
+
     backendProcess.on('exit', (code, signal) => {
       console.warn(`[Main] Backend process exited (code=${code}, signal=${signal}).`);
       backendProcess = null;
       if (!isQuitting) {
         // Simple retry after short delay to keep UI responsive
+        console.log('[Main] Retrying backend launch in 2s...');
         setTimeout(() => {
           try {
-            backendProcess = fork(backendEntry, [], {
-              env: { ...process.env, SOUNDVZN_USER_DATA: app.getPath('userData') },
-              stdio: 'inherit',
-            });
+            if (fs.existsSync(backendEntry)) {
+              backendProcess = fork(backendEntry, [], {
+                env: { ...process.env, SOUNDVZN_USER_DATA: app.getPath('userData') },
+                stdio: 'inherit',
+              });
+            }
           } catch (err) {
             logError(err);
           }
-        }, 1000);
+        }, 2000);
       }
     });
   } catch (err) {
+    console.error('[Main] Failed to initial fork backend:', err);
     logError(err);
   }
 
   createWindow();
+  initDiscordRPC();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -156,6 +317,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     isQuitting = true;
     backendProcess?.kill();
+    globalShortcut.unregisterAll();
     app.quit();
   }
 });
@@ -172,6 +334,24 @@ ipcMain.handle('window:maximize', () => {
   else mainWindow?.maximize();
 });
 ipcMain.handle('window:close', () => mainWindow?.close());
+ipcMain.handle('system:openExternal', async (_event: any, url: string) => {
+  if (url.startsWith('http:') || url.startsWith('https:')) {
+    await shell.openExternal(url);
+    return true;
+  }
+  return false;
+});
+
+
+ipcMain.handle('window:toggleMiniPlayer', () => {
+  if (miniPlayerWindow) {
+    miniPlayerWindow.close();
+  } else {
+    createMiniPlayerWindow();
+    // Optionally hide main window or just keep it
+    // mainWindow?.hide();
+  }
+});
 
 
 ipcMain.handle('dialog:openDirectory', async () => {
@@ -197,7 +377,7 @@ ipcMain.handle('dialog:openFile', async () => {
 ipcMain.handle('audio:readMetadata', async (_event: any, filePath: string) => {
   try {
     const mm = await import('music-metadata');
-    const metadata = await mm.parseFile(filePath);
+    const metadata = await (mm as any).parseFile(filePath);
     const picture = metadata.common.picture?.[0];
     let artworkUrl = '';
 
@@ -219,6 +399,22 @@ ipcMain.handle('audio:readMetadata', async (_event: any, filePath: string) => {
   }
 });
 
+ipcMain.handle('audio:writeMetadata', async (_event: any, filePath: string, metadata: any) => {
+  try {
+    const NodeID3 = require('node-id3');
+    const tags = {
+      title: metadata.title,
+      artist: metadata.artist,
+      album: metadata.album,
+    };
+    const success = NodeID3.update(tags, filePath);
+    return { success };
+  } catch (error) {
+    console.error('Error writing metadata:', error);
+    return { success: false, error: (error as any).message };
+  }
+});
+
 
 // Store logic (simple JSON file)
 ipcMain.handle('store:save', async (_event: any, key: string, data: any) => {
@@ -235,7 +431,7 @@ ipcMain.handle('store:save', async (_event: any, key: string, data: any) => {
   }
 });
 
-ipcMain.handle('store:load', async (_event: any, key: string) => {
+async function loadFromStore(key: string) {
   try {
     const filePath = path.join(app.getPath('userData'), 'storage', `${key}.json`);
     if (fs.existsSync(filePath)) {
@@ -244,9 +440,13 @@ ipcMain.handle('store:load', async (_event: any, key: string) => {
     }
     return null;
   } catch (err) {
-    console.error('Store load error:', err);
+    console.error(`Store load error for ${key}:`, err);
     return null;
   }
+}
+
+ipcMain.handle('store:load', async (_event: any, key: string) => {
+  return await loadFromStore(key);
 });
 
 function getDownloadsDir() {
@@ -445,7 +645,7 @@ ipcMain.handle('log:export', async () => {
 
 ipcMain.handle('system:getPerf', async () => {
   try {
-    const mem = await process.getProcessMemoryInfo();
+    const mem = await (process as any).getProcessMemoryInfo();
     return {
       ramMB: Math.round(mem.private / 1024), // process.getProcessMemoryInfo returns KB
       uptime: Math.round(process.uptime()),
@@ -523,3 +723,41 @@ ipcMain.handle('bug:submit', async (_: any, data: { description: string; include
     return { success: false, error: String(err) };
   }
 });
+
+ipcMain.handle('log:playback', async (_event: any, trackId: string, artist: string, title: string) => {
+  try {
+    const authHeader = await getAuthHeader();
+    await axios.post('http://localhost:3000/api/stats/log', { trackId, artist, title }, {
+      headers: authHeader ? { Authorization: authHeader } : {}
+    });
+    return true;
+  } catch (err) {
+    return false;
+  }
+});
+
+ipcMain.handle('system:getStats', async () => {
+  try {
+    const authHeader = await getAuthHeader();
+    const response = await axios.get('http://localhost:3000/api/stats', {
+      headers: authHeader ? { Authorization: authHeader } : {}
+    });
+    return response.data;
+  } catch (err) {
+    return null;
+  }
+});
+
+ipcMain.handle('discord:updatePresence', (_event: any, data: any) => {
+  updateDiscordPresence(data);
+  return true;
+});
+
+async function getAuthHeader() {
+  try {
+    const token = await loadFromStore('auth_access_token');
+    return token ? `Bearer ${token}` : null;
+  } catch {
+    return null;
+  }
+}

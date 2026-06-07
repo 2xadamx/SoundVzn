@@ -7,15 +7,15 @@ interface TitleBarProps {
 
 export const TitleBar: React.FC<TitleBarProps> = ({ title = 'SoundVzn' }) => {
   const handleMinimize = () => {
-    window.electron.minimize();
+    (window as any).electron?.minimize();
   };
 
   const handleMaximize = () => {
-    window.electron.maximize();
+    (window as any).electron?.maximize();
   };
 
   const handleClose = () => {
-    window.electron.close();
+    (window as any).electron?.close();
   };
 
   return (

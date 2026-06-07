@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EQ_FREQUENCIES, EQ_PRESETS, applyEQPreset, setEQGain, enableMobileOptimization } from '@utils/audioProcessor';
+import { FrequencyVisualizer } from './FrequencyVisualizer';
+import { usePlayerStore } from '@store/player';
+import { Info, Zap } from 'lucide-react';
+import clsx from 'clsx';
 
 export const Equalizer: React.FC = () => {
-  const [selectedPreset, setSelectedPreset] = useState<keyof typeof EQ_PRESETS>('flat');
+  const [selectedPreset, setSelectedPreset] = useState<string>('flat');
   const [eqValues, setEqValues] = useState<number[]>(EQ_PRESETS.flat);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const { currentTrack } = usePlayerStore();
 
-  const handlePresetChange = (preset: keyof typeof EQ_PRESETS) => {
+  const isHiFi = currentTrack?.bitrate && (currentTrack.bitrate > 320 || currentTrack.format?.toLowerCase() === 'flac' || currentTrack.format?.toLowerCase() === 'wav');
+
+  const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset);
-    setEqValues(EQ_PRESETS[preset]);
+    setEqValues(EQ_PRESETS[preset] || EQ_PRESETS.flat);
     applyEQPreset(preset);
   };
 
@@ -27,17 +34,50 @@ export const Equalizer: React.FC = () => {
     setEqValues(EQ_PRESETS.mobile_optimized);
   };
 
-  const presets = Object.keys(EQ_PRESETS) as Array<keyof typeof EQ_PRESETS>;
+  const presets = Object.keys(EQ_PRESETS) as string[];
 
   return (
     <div className="p-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6"
       >
-        <h1 className="text-4xl font-bold text-white mb-2">Ecualizador de 10 Bandas</h1>
-        <p className="text-gray-400">Personaliza tu experiencia de audio profesional</p>
+        <div>
+          <h1 className="text-4xl font-bold text-white mb-2">Ecualizador de 10 Bandas</h1>
+          <p className="text-gray-400">Personaliza tu experiencia de audio profesional</p>
+        </div>
+        <div className="w-full md:w-80 h-24 bg-white/5 rounded-3xl border border-white/10 overflow-hidden relative group">
+          <FrequencyVisualizer barColor="#0ea5e9" barCount={32} gap={4} className="opacity-50" />
+
+          {/* Audiophile Tooltip */}
+          {currentTrack && (
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center px-6 gap-4">
+              <div className={clsx(
+                "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+                isHiFi ? "bg-emerald-500/20 text-emerald-400" : "bg-white/10 text-white/40"
+              )}>
+                {isHiFi ? <Zap size={18} /> : <Info size={18} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest truncate">
+                    {currentTrack.format || 'MPEG'}
+                  </span>
+                  {isHiFi && (
+                    <span className="text-[8px] bg-emerald-500 text-black px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">HI-FI</span>
+                  )}
+                </div>
+                <div className="flex gap-3 mt-1">
+                  <span className="text-[9px] font-bold text-white/40">{currentTrack.bitrate || 320} kbps</span>
+                  <span className="text-[9px] font-bold text-white/40">{currentTrack.sampleRate || 44.1} kHz</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-dark-900 to-transparent pointer-events-none" />
+        </div>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

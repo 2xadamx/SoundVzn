@@ -502,10 +502,9 @@ export function registerYouTubeRoutes(app: Express, userAgent: string) {
       if (responseHeaders['content-range']) res.setHeader('Content-Range', responseHeaders['content-range']);
       if (responseHeaders['cache-control']) res.setHeader('Cache-Control', responseHeaders['cache-control']);
 
-      // Asegurar que siempre haya Accept-Ranges si es posible
       if (!res.getHeader('Accept-Ranges')) res.setHeader('Accept-Ranges', 'bytes');
 
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
       res.setHeader('Connection', 'keep-alive');
 
       response.data.pipe(res);
@@ -579,7 +578,7 @@ export function registerYouTubeRoutes(app: Express, userAgent: string) {
         res.setHeader('Content-Type', direct.mimeType);
       }
 
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
       res.setHeader('Connection', 'keep-alive');
       response.data.pipe(res);
 

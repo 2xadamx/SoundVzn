@@ -1,6 +1,11 @@
-/// <reference types="vite/client" />
-// URL del backend (Electron).
-export const BACKEND_URL = 'http://localhost:3000';
+// En desarrollo, Vite proxea /api → localhost:3000 automáticamente
+// En producción, usar VITE_BACKEND_URL si se define, o el mismo origen si el backend y frontend están en el mismo servidor
+export const BACKEND_URL =
+  import.meta.env?.DEV
+    ? ''
+    : (import.meta.env?.VITE_BACKEND_URL ||
+       import.meta.env?.VITE_API_URL ||
+       window.location.origin);
 
 export interface MusicAPIConfig {
   spotify: {
@@ -13,7 +18,6 @@ export interface MusicAPIConfig {
     secret: string;
     enabled: boolean;
   };
-  // AudD removed — service discontinued
 }
 
 const CONFIG: MusicAPIConfig = {
@@ -29,11 +33,10 @@ const CONFIG: MusicAPIConfig = {
   },
 };
 
-// Update enabled status based on public env keys
 CONFIG.spotify.enabled = !!CONFIG.spotify.clientId;
 CONFIG.lastfm.enabled = !!CONFIG.lastfm.apiKey;
 
-let spotifyToken: string | null = null;
+let spotifyToken: string = '';
 let spotifyTokenExpiry: number = 0;
 
 function loadSavedConfig() {
@@ -43,7 +46,6 @@ function loadSavedConfig() {
     const saved = JSON.parse(raw);
     if (saved?.spotify?.clientId) CONFIG.spotify.clientId = saved.spotify.clientId;
     if (saved?.lastfm?.apiKey) CONFIG.lastfm.apiKey = saved.lastfm.apiKey;
-    // NEVER load secrets from localStorage
     CONFIG.spotify.enabled = !!CONFIG.spotify.clientId;
     CONFIG.lastfm.enabled = !!CONFIG.lastfm.apiKey;
   } catch { }
@@ -80,7 +82,7 @@ export async function getSpotifyToken(): Promise<string> {
     spotifyTokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
     CONFIG.spotify.enabled = true;
 
-    return spotifyToken || '';
+    return spotifyToken;
   } catch (error) {
     CONFIG.spotify.enabled = false;
     console.error('Error in getSpotifyToken (frontend):', error);

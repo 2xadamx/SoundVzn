@@ -1,75 +1,65 @@
-import React from 'react';
-import { Home, Search, Radio, ListMusic, Music, Disc, Mic2, Settings } from 'lucide-react';
+import {
+    Home,
+    Search,
+    Disc,
+    Mic2,
+    Radio,
+    ListMusic,
+    Music2,
+    Users,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { motion } from 'framer-motion';
-import { useTranslation } from '@hooks/useTranslation';
-import type { TranslationKey } from '@utils/i18n';
 
 interface NavItemProps {
     icon: React.ElementType;
     label: string;
     active?: boolean;
     onClick?: () => void;
+    badge?: React.ReactNode;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, active, onClick, badge }) => (
     <motion.div
-        whileHover={{ x: 4, scale: 1.01 }}
-        whileTap={{ scale: 0.98 }}
+        whileHover={{ x: 3 }}
+        whileTap={{ scale: 0.97 }}
         onClick={onClick}
         className={clsx(
-            'flex items-center gap-4 px-5 py-3.5 rounded-2xl cursor-pointer transition-all duration-400 group relative overflow-hidden',
+            'flex items-center gap-3.5 px-4 py-3 rounded-2xl cursor-pointer transition-all duration-300 group relative overflow-hidden select-none',
             active
-                ? 'bg-white/10 text-white shadow-[0_10px_20px_rgba(0,0,0,0.2),inset_0_2px_10px_rgba(255,255,255,0.05)] border border-white/10'
-                : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/5'
+                ? 'text-white border border-white/8'
+                : 'text-white/30 hover:text-white/70 hover:bg-white/[0.03] border border-transparent'
         )}
+        style={active ? {
+            background: 'rgba(255,255,255,0.06)',
+            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+        } : {}}
     >
-        {/* Neon Glow Indicator (consistent with lyrics mode aesthetics) */}
         {active && (
             <motion.div
-                layoutId="activeIndicator"
-                className="absolute left-0 w-1.5 h-6 bg-white rounded-full shadow-[0_0_15px_white] z-20"
-                transition={{ type: "spring", bounce: 0.25, duration: 0.6 }}
+                layoutId="nav-indicator"
+                className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-white"
+                style={{ boxShadow: '0 0 12px rgba(255,255,255,0.6)' }}
+                transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
             />
         )}
-
-        <Icon size={22} strokeWidth={active ? 2.5 : 2} className={clsx(
-            'transition-all duration-400',
-            active ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]' : 'group-hover:text-white/80 group-hover:scale-110'
-        )} />
-
+        <Icon
+            size={18}
+            strokeWidth={active ? 2.5 : 1.5}
+            className={clsx(
+                'transition-all duration-300 flex-shrink-0',
+                active ? 'text-white' : 'group-hover:text-white/60'
+            )}
+        />
         <span className={clsx(
-            "font-black text-sm tracking-tight transition-colors duration-400",
-            active ? "text-white" : "group-hover:text-white/80"
+            'text-[15px] font-bold tracking-tight transition-colors duration-300 flex-1',
+            active ? 'text-white' : 'group-hover:text-white/60'
         )}>
             {label}
         </span>
-
-        {/* Subtle Background Glow for Active Item */}
-        {active && (
-            <div className="absolute inset-0 bg-white/5 pointer-events-none opacity-40" />
-        )}
+        {badge && <span className="ml-auto">{badge}</span>}
     </motion.div>
 );
-
-const SectionTitle: React.FC<{ title: string }> = ({ title }) => (
-    <h3 className="px-5 text-[10px] font-black text-white/20 uppercase tracking-[0.2em] mb-3 mt-10">
-        {title}
-    </h3>
-);
-
-const MAIN_NAV_ITEMS: Array<{ icon: React.ElementType; view: string; labelKey: TranslationKey }> = [
-    { icon: Home, view: 'home', labelKey: 'nav.home' },
-    { icon: Search, view: 'search', labelKey: 'nav.browse' },
-    { icon: Radio, view: 'radio', labelKey: 'nav.radio' },
-];
-
-const COLLECTION_NAV_ITEMS: Array<{ icon: React.ElementType; view: string; labelKey: TranslationKey }> = [
-    { icon: ListMusic, view: 'playlists', labelKey: 'nav.playlists' },
-    { icon: Music, view: 'library', labelKey: 'nav.library' },
-    { icon: Disc, view: 'albums', labelKey: 'nav.albums' },
-    { icon: Mic2, view: 'artists', labelKey: 'nav.artists' },
-];
 
 interface SidebarProps {
     currentView: string;
@@ -77,76 +67,67 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
-    const { t } = useTranslation();
-
     return (
-        <aside className="w-72 h-full bg-black/20 backdrop-blur-[100px] flex flex-col border-r border-white/10 no-drag relative overflow-hidden z-30 shadow-[20px_0_50px_rgba(0,0,0,0.3)]">
-
-            {/* Dynamic Background Accents */}
-            <div className="absolute top-[-10%] left-[-20%] w-[150%] h-[30%] bg-white/5 blur-[100px] rounded-full pointer-events-none" />
-            <div className="absolute bottom-[-10%] right-[-20%] w-[100%] h-[20%] bg-white/5 blur-[80px] rounded-full pointer-events-none" />
-
-            <div className="relative z-10 p-8 flex flex-col h-full">
-                {/* Immersive Banner Area */}
-                <div
-                    className="mb-10 group cursor-pointer relative -mx-4"
-                    onClick={() => onNavigate('home')}
-                >
-                    <motion.div
-                        className="w-full h-32 overflow-hidden relative"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 1 }}
-                    >
-                        <img
-                            src="banner-splash.jpeg"
-                            alt="SoundVizion"
-                            className="w-full h-full object-contain relative z-10 scale-125"
-                            style={{
-                                WebkitMaskImage: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 90%)',
-                                maskImage: 'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 90%)'
-                            }}
-                        />
-                    </motion.div>
-
-                    {/* Background Glow */}
-                    <div className="absolute inset-0 bg-white/5 blur-3xl rounded-full opacity-30 pointer-events-none scale-150" />
-                </div>
-                {/* Main Navigation */}
-                <nav className="space-y-2">
-                    {MAIN_NAV_ITEMS.map((item) => (
-                        <NavItem
-                            key={item.view}
-                            icon={item.icon}
-                            label={t(item.labelKey)}
-                            active={currentView === item.view}
-                            onClick={() => onNavigate(item.view)}
-                        />
-                    ))}
-                </nav>
-
-                <SectionTitle title={t('nav.section.collection')} />
-                <nav className="space-y-2 flex-1 overflow-y-auto scroll-none">
-                    {COLLECTION_NAV_ITEMS.map((item) => (
-                        <NavItem
-                            key={item.view}
-                            icon={item.icon}
-                            label={t(item.labelKey)}
-                            active={currentView === item.view}
-                            onClick={() => onNavigate(item.view)}
-                        />
-                    ))}
-                </nav>
-
-                <div className="mt-auto pt-6 border-t border-white/5">
-                    <NavItem
-                        icon={Settings}
-                        label={t('nav.settings')}
-                        active={currentView === 'settings'}
-                        onClick={() => onNavigate('settings')}
+        <aside style={{
+            width: 260,
+            height: 'calc(100vh - 72px)',
+            background: 'rgba(2,2,4,0.7)',
+            backdropFilter: 'blur(80px)',
+            WebkitBackdropFilter: 'blur(80px)',
+            borderRight: '1px solid rgba(255,255,255,0.04)',
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            zIndex: 40,
+            boxShadow: '15px 0 40px rgba(0,0,0,0.3)'
+        }}>
+            {/* LOGO BANNER — imagen original de la beta */}
+            <div style={{ padding: '36px 40px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                <div className="relative w-full select-none flex items-center justify-center p-0">
+                    <img
+                        src="/logo-banner.jpg"
+                        alt="SoundVzn"
+                        style={{
+                            width: '100%',
+                            height: 'auto',
+                            objectFit: 'contain',
+                            scale: '1.25'
+                        }}
                     />
                 </div>
             </div>
 
+            {/* NAVIGATION */}
+            <nav className="flex-1 overflow-y-auto py-2 px-3" style={{ scrollbarWidth: 'none' }}>
+                <div className="space-y-0.5 mb-6">
+                    <NavItem icon={Home} label="Inicio" active={currentView === 'home'} onClick={() => onNavigate('home')} />
+                    <NavItem icon={Search} label="Explorar" active={currentView === 'search'} onClick={() => onNavigate('search')} />
+                    <NavItem
+                        icon={Radio}
+                        label="Radio"
+                        active={currentView === 'radio'}
+                        onClick={() => onNavigate('radio')}
+                    />
+                    <NavItem icon={Users} label="Amigos" active={currentView === 'friends'} onClick={() => onNavigate('friends')} />
+                </div>
+
+                <div className="space-y-0.5">
+                    <p style={{
+                        padding: '0 16px',
+                        fontSize: 9,
+                        fontWeight: 800,
+                        color: 'rgba(255,255,255,0.15)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.16em',
+                        marginBottom: 12,
+                        marginTop: 8
+                    }}>Colección</p>
+                    <NavItem icon={ListMusic} label="Playlists" active={currentView === 'playlists'} onClick={() => onNavigate('playlists')} />
+                    <NavItem icon={Music2} label="Tu Música" active={currentView === 'library'} onClick={() => onNavigate('library')} />
+                    <NavItem icon={Disc} label="Discos" active={currentView === 'albums'} onClick={() => onNavigate('albums')} />
+                    <NavItem icon={Mic2} label="Artistas" active={currentView === 'artists'} onClick={() => onNavigate('artists')} />
+                </div>
+            </nav>
         </aside>
     );
 };

@@ -5,7 +5,7 @@ import { usePlayerStore } from '@store/player';
 import { shallow } from 'zustand/shallow';
 import { extractMetadata } from '@utils/metadata';
 import { addTrack, getAllTracks } from '@utils/database';
-import { Track } from '../types';
+import { Track } from '../types/index';
 
 export const Library: React.FC = () => {
   const { tracks, isLoading, searchQuery, setSearchQuery, getFilteredTracks, setTracks, setLoading } = useLibraryStore(
@@ -84,6 +84,10 @@ export const Library: React.FC = () => {
 
   const handleImportMusic = async () => {
     try {
+      if (!window.electron?.openFile) {
+        alert("La importación de archivos locales solo está disponible en la versión de escritorio.");
+        return;
+      }
       const filePaths = await window.electron.openFile();
       if (!filePaths || filePaths.length === 0) return;
 
@@ -111,7 +115,7 @@ export const Library: React.FC = () => {
             genre: metadata.genre,
             artwork: metadata.artwork,
             favorite: false,
-            dateAdded: new Date().toISOString(),
+            addedDate: new Date().toISOString(),
             playCount: 0,
             lastPlayed: undefined
           };

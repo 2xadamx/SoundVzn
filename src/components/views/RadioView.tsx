@@ -14,6 +14,7 @@ import {
     Music2,
     Heart
 } from 'lucide-react';
+import { formatNumber, toSentenceCase } from '../../utils/formatters';
 
 export const RadioView: React.FC = () => {
     const [stations, setStations] = useState<RadioStation[]>([]);
@@ -88,11 +89,11 @@ export const RadioView: React.FC = () => {
                         <div className="p-3 bg-primary-500/20 rounded-2xl text-primary-400">
                             <RadioIcon size={32} />
                         </div>
-                        <h1 className="text-6xl font-black text-white italic uppercase tracking-tighter drop-shadow-2xl">
-                            Radio Live
+                        <h1 className="text-6xl font-black text-white italic tracking-tighter drop-shadow-2xl">
+                            {toSentenceCase('Radio live')}
                         </h1>
                     </div>
-                    <p className="text-white/40 font-black uppercase tracking-[0.4em] text-[10px] opacity-50">Explora emisoras de todo el mundo en tiempo real</p>
+                    <p className="text-white/40 font-bold tracking-[0.05em] text-[10px] opacity-70">{toSentenceCase('Explora emisoras de todo el mundo en tiempo real')}</p>
                 </div>
 
                 <div className="flex-1 max-w-md">
@@ -113,8 +114,8 @@ export const RadioView: React.FC = () => {
                             {isSearching ? (
                                 <Loader2 className="animate-spin text-white/40 mr-2" size={18} />
                             ) : (
-                                <button className="px-4 py-2 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-transform">
-                                    Buscar
+                                <button className="px-4 py-2 bg-white text-black text-[10px] font-bold tracking-widest rounded-xl hover:scale-105 transition-transform">
+                                    {toSentenceCase('Buscar')}
                                 </button>
                             )}
                         </div>
@@ -128,7 +129,7 @@ export const RadioView: React.FC = () => {
                     <button
                         key={cat.name}
                         onClick={() => handleCategoryClick(cat.name)}
-                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shrink-0 ${activeCategory === cat.name
+                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold tracking-wide text-[10px] transition-all border shrink-0 ${activeCategory === cat.name
                             ? 'bg-white text-black border-white shadow-xl scale-105'
                             : 'bg-white/5 text-white/40 border-white/5 hover:border-white/20 hover:text-white'
                             }`}
@@ -142,8 +143,8 @@ export const RadioView: React.FC = () => {
                 {/* Main Grid */}
                 <div className="lg:col-span-8 space-y-8">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">
-                            {activeCategory === 'Top' ? 'Emisoras Populares' : `Género: ${activeCategory}`}
+                        <h2 className="text-2xl font-black text-white italic tracking-tighter">
+                            {activeCategory === 'Top' ? toSentenceCase('Emisoras populares') : `${toSentenceCase('Género')}: ${activeCategory}`}
                         </h2>
                         <div className="h-px bg-white/10 flex-1 ml-6" />
                     </div>
@@ -167,11 +168,22 @@ export const RadioView: React.FC = () => {
                                         className="group flex items-center gap-4 bg-white/[0.03] hover:bg-white/[0.08] p-4 rounded-3xl cursor-pointer transition-all border border-white/5 hover:border-white/10"
                                     >
                                         <div className="w-16 h-16 rounded-2xl overflow-hidden bg-black/40 flex items-center justify-center relative border border-white/10 shrink-0">
-                                            {station.favicon ? (
-                                                <img src={station.favicon} className="w-full h-full object-cover" alt="" />
-                                            ) : (
-                                                <RadioIcon className="text-white/20" size={24} />
-                                            )}
+                                            {station.favicon || station.logo ? (
+                                                <img
+                                                    src={station.favicon || station.logo}
+                                                    alt={station.name}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        e.currentTarget.onerror = null; // evitar loop infinito
+                                                        e.currentTarget.style.display = 'none';
+                                                        const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                                        if (fb) fb.style.removeProperty('display');
+                                                    }}
+                                                />
+                                            ) : null}
+                                            <div className="radio-fallback-icon" style={{ display: station.favicon || station.logo ? 'none' : 'flex' }}>
+                                                {station.name.charAt(0).toUpperCase()}
+                                            </div>
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                 <Play fill="white" size={20} className="text-white" />
                                             </div>
@@ -179,7 +191,7 @@ export const RadioView: React.FC = () => {
                                         <div className="flex-1 min-w-0">
                                             <h4 className="text-white font-bold truncate tracking-tight">{station.name}</h4>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-primary-400">{station.country}</span>
+                                                <span className="text-[10px] font-bold tracking-wide text-primary-400">{station.country}</span>
                                                 <span className="text-white/20 text-[10px]">•</span>
                                                 <span className="text-white/40 text-[10px] font-bold truncate">{station.tags[0] || 'Radio'}</span>
                                             </div>
@@ -200,7 +212,7 @@ export const RadioView: React.FC = () => {
                         <div className="p-2 bg-orange-500/20 rounded-xl text-orange-400">
                             <Flame size={20} />
                         </div>
-                        <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Tendencias</h3>
+                        <h3 className="text-xl font-black text-white italic tracking-tighter">{toSentenceCase('Tendencias')}</h3>
                     </div>
 
                     <div className="space-y-4">
@@ -212,12 +224,27 @@ export const RadioView: React.FC = () => {
                                 className="flex items-center gap-4 p-2 rounded-2xl hover:bg-white/5 cursor-pointer group"
                             >
                                 <div className="text-white/20 font-black italic text-lg w-6">{index + 1}</div>
-                                <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-white/10">
-                                    <img src={station.favicon || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?q=80&w=200'} className="w-full h-full object-cover" alt="" />
+                                <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-white/[0.06] flex items-center justify-center">
+                                    {station.favicon || station.logo ? (
+                                        <img
+                                            src={station.favicon || station.logo}
+                                            className="w-full h-full object-cover"
+                                            alt={station.name}
+                                            onError={(e) => {
+                                                e.currentTarget.onerror = null;
+                                                e.currentTarget.style.display = 'none';
+                                                const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                                if (fb) fb.style.removeProperty('display');
+                                            }}
+                                        />
+                                    ) : null}
+                                    <div className="radio-fallback-icon" style={{ display: station.favicon || station.logo ? 'none' : 'flex' }}>
+                                        {station.name.charAt(0).toUpperCase()}
+                                    </div>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <h4 className="text-white font-bold text-sm truncate uppercase tracking-tight italic">{station.name}</h4>
-                                    <p className="text-white/40 text-[9px] font-black uppercase tracking-widest">{station.votes} VOTOS</p>
+                                    <h4 className="text-white font-bold text-sm truncate tracking-tight">{station.name}</h4>
+                                    <p className="text-white/40 text-[9px] font-bold tracking-widest">{formatNumber(station.votes)} {toSentenceCase('votos')}</p>
                                 </div>
                                 <ChevronRight className="text-white/10 group-hover:text-white transition-colors" size={16} />
                             </motion.div>
@@ -226,10 +253,10 @@ export const RadioView: React.FC = () => {
 
                     <div className="bg-gradient-to-br from-primary-500/20 to-purple-500/20 p-8 rounded-[40px] border border-white/10 relative overflow-hidden group">
                         <div className="absolute -top-12 -right-12 w-32 h-32 bg-white/10 blur-3xl animate-pulse" />
-                        <h4 className="text-white font-black uppercase tracking-widest text-xs mb-3">Tu propia estación</h4>
-                        <p className="text-white/40 text-[10px] leading-relaxed mb-6 uppercase font-bold tracking-widest">Añade cualquier stream directo (MP3, AAC) pegando la URL.</p>
-                        <button className="w-full py-3 bg-white text-black font-black uppercase tracking-tighter text-xs rounded-2xl hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all flex items-center justify-center gap-2">
-                            <Plus size={14} /> Añadir URL Personal
+                        <h4 className="text-white font-bold tracking-widest text-xs mb-3">{toSentenceCase('Tu propia estación')}</h4>
+                        <p className="text-white/40 text-[10px] leading-relaxed mb-6 font-medium tracking-wide">{toSentenceCase('Añade cualquier stream directo (MP3, AAC) pegando la URL.')}</p>
+                        <button className="w-full py-3 bg-white text-black font-bold tracking-tight text-xs rounded-2xl hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] transition-all flex items-center justify-center gap-2">
+                            <Plus size={14} /> {toSentenceCase('Añadir URL personal')}
                         </button>
                     </div>
                 </div>

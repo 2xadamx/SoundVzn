@@ -22,7 +22,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ onComplete }) =>
                     opacity: [0, 0.5, 0]
                 }}
                 transition={{ duration: 3, ease: "easeInOut" }}
-                className="absolute w-[500px] h-[500px] bg-primary/20 rounded-full blur-[100px]"
+                className="absolute w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[100px]"
             />
 
             {/* Logo / Text */}
@@ -34,7 +34,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ onComplete }) =>
             >
                 <div className="w-[500px] h-[250px] mb-8 relative flex items-center justify-center overflow-hidden">
                     {/* Background Glow - Intensified */}
-                    <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full scale-125 opacity-40" />
+                    <div className="absolute inset-0 bg-indigo-600/20 blur-[100px] rounded-full scale-125 opacity-40" />
 
                     <motion.div
                         initial={{ scale: 1.1, opacity: 0 }}
@@ -43,7 +43,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ onComplete }) =>
                         className="relative w-full h-full flex items-center justify-center"
                     >
                         <img
-                            src="banner-splash.jpeg"
+                            src="/logo-banner.jpg"
                             alt="SoundVzn Banner"
                             className="w-full h-full object-contain relative z-10"
                             style={{
@@ -64,7 +64,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ onComplete }) =>
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 1, duration: 1 }}
-                    className="text-text-tertiary mt-2 text-sm font-mono tracking-widest uppercase"
+                    className="text-white/40 mt-2 text-sm font-mono tracking-widest uppercase"
                 >
                     Hi-Res Audio Environment
                 </motion.p>
@@ -75,7 +75,7 @@ export const IntroAnimation: React.FC<IntroAnimationProps> = ({ onComplete }) =>
                 initial={{ width: 0 }}
                 animate={{ width: 200 }}
                 transition={{ delay: 0.5, duration: 2.5, ease: "easeInOut" }}
-                className="absolute bottom-20 h-[2px] bg-gradient-to-r from-primary to-accent-blue rounded-full"
+                className="absolute bottom-20 h-[2px] bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full shadow-[0_0_12px_rgba(99,102,241,0.5)]"
             />
         </div>
     );

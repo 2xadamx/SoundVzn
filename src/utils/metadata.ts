@@ -18,7 +18,7 @@ export interface AudioMetadata {
 
 export async function extractMetadata(filePath: string): Promise<AudioMetadata> {
   try {
-    const metadata = await window.electron.readMetadata(filePath);
+    const metadata = await (window as any).electron?.readMetadata(filePath);
 
     if (!metadata) {
       throw new Error('Failed to read metadata');

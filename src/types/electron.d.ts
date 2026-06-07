@@ -19,6 +19,12 @@ declare global {
       log: (level: 'INFO' | 'WARN' | 'ERROR', message: string, meta?: any) => Promise<boolean>;
       exportLogs: () => Promise<string | null>;
       getSystemPerf: () => Promise<{ ramMB: number; uptime: number; platform: string; arch: string }>;
+      saveAvatar: (filePath: string) => Promise<string | null>;
+      submitBug: (data: { description: string; includeLogs: boolean; email?: string }) => Promise<any>;
+      logPlayback: (trackId: string, artist: string, title: string) => Promise<boolean>;
+      getStats: () => Promise<any>;
+      openExternal: (url: string) => Promise<boolean>;
+      updatePresence: (data: { title: string; artist: string; isPlaying: boolean; duration: number; currentTime: number }) => Promise<boolean>;
     };
   }
 }

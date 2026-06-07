@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { MetadataEngine } from '../../utils/MetadataEngine';
 import { usePlayerStore } from '../../store/player';
@@ -87,26 +87,27 @@ export const AlbumProfile: React.FC<AlbumProfileProps> = ({ albumId, albumName, 
                             alt={albumName}
                         />
                     </div>
-                    <div className="pb-2">
-                        <p className="text-white/40 text-[10px] font-black tracking-[0.4em] uppercase mb-2">Ãlbum</p>
-                        <h1 className="text-5xl md:text-7xl font-black text-white tracking-tighter italic uppercase truncate max-w-2xl mb-4">
-                            {albumName}
-                        </h1>
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => {
-                                    const name = artistName || albumInfo?.artist;
-                                    if (!name) return;
-                                    onNavigate?.('artist', { artistName: name, from: 'search' });
-                                }}
-                                className="text-white font-bold text-lg hover:text-primary transition-colors"
-                            >
-                                {artistName || albumInfo?.artist}
-                            </button>
-                            <span className="text-white/20">•</span>
-                            <span className="text-white/40 font-mono text-sm">{tracks.length} canciones</span>
+                        <div className="pb-2">
+                            <p className="text-white/40 text-[10px] font-black tracking-[0.4em] uppercase mb-2">Álbum</p>
+                            <h1 className="text-5xl md:text-7xl font-black text-white tracking-tighter italic uppercase truncate max-w-2xl mb-4">
+                                {albumName}
+                            </h1>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => {
+                                        const name = artistName || albumInfo?.artist;
+                                        if (!name) return;
+                                        onNavigate?.('artist', { artistName: name, from: 'search' });
+                                    }}
+                                    className="text-white font-bold text-lg hover:text-primary transition-colors"
+                                >
+                                    {artistName || albumInfo?.artist}
+                                </button>
+                                <span className="text-white/20">•</span>
+                                <span className="text-white/40 font-mono text-sm">{tracks.length} canciones</span>
+                                <span className="text-[7px] font-black px-2 py-0.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 tracking-widest uppercase">SVZN</span>
+                            </div>
                         </div>
-                    </div>
                 </div>
             </div>
 

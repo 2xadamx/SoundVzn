@@ -4,9 +4,11 @@ contextBridge.exposeInMainWorld('electron', {
   openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
   readMetadata: (filePath: string) => ipcRenderer.invoke('audio:readMetadata', filePath),
+  writeMetadata: (filePath: string, metadata: any) => ipcRenderer.invoke('audio:writeMetadata', filePath, metadata),
   minimize: () => ipcRenderer.invoke('window:minimize'),
   maximize: () => ipcRenderer.invoke('window:maximize'),
   close: () => ipcRenderer.invoke('window:close'),
+  toggleMiniPlayer: () => ipcRenderer.invoke('window:toggleMiniPlayer'),
   downloadTrack: (videoId: string, title?: string, artist?: string) => ipcRenderer.invoke('download:track', videoId, title, artist),
   getDownloadPath: (videoId: string) => ipcRenderer.invoke('download:getPath', videoId),
   getStorageSize: () => ipcRenderer.invoke('download:getStorageSize'),
@@ -25,4 +27,14 @@ contextBridge.exposeInMainWorld('electron', {
   saveAvatar: (filePath: string) => ipcRenderer.invoke('profile:saveAvatar', filePath),
   submitBug: (data: { description: string; includeLogs: boolean; email?: string }) =>
     ipcRenderer.invoke('bug:submit', data),
+  logPlayback: (trackId: string, artist: string, title: string) =>
+    ipcRenderer.invoke('log:playback', trackId, artist, title),
+  getStats: () => ipcRenderer.invoke('system:getStats'),
+  onPlayerTogglePlay: (callback: () => void) => ipcRenderer.on('player:toggle-play', () => callback()),
+  onPlayerNext: (callback: () => void) => ipcRenderer.on('player:next', () => callback()),
+  onPlayerPrev: (callback: () => void) => ipcRenderer.on('player:prev', () => callback()),
+  onNavigationGoTo: (callback: (view: string) => void) => ipcRenderer.on('navigation:go-to', (_: any, view: string) => callback(view)),
+  openExternal: (url: string) => ipcRenderer.invoke('system:openExternal', url),
+  updatePresence: (data: { title: string; artist: string; isPlaying: boolean; duration: number; currentTime: number }) => 
+    ipcRenderer.invoke('discord:updatePresence', data),
 });

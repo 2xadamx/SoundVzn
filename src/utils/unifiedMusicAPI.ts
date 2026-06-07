@@ -1,5 +1,5 @@
 import { UnifiedTrackMetadata } from '../types';
-import { getAPIConfig } from './apiConfig';
+import { getAPIConfig, BACKEND_URL } from './apiConfig';
 import * as Cache from './cacheManager';
 import * as Spotify from './spotifyAPI';
 
@@ -14,6 +14,30 @@ async function fetchJsonWithTimeout(url: string, init?: RequestInit, timeoutMs: 
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+async function fetchWithBackoff(url: string, init?: RequestInit, maxRetries: number = 3): Promise<Response> {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetchJsonWithTimeout(url, init);
+      if (response.status === 429 || (response.status >= 500 && i < maxRetries - 1)) {
+        const delay = Math.pow(2, i) * 1000 + Math.random() * 500;
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      return response;
+    } catch (err: any) {
+      if (err.name === 'AbortError' && i < maxRetries - 1) {
+        continue;
+      }
+      lastError = err;
+      if (i < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+  }
+  throw lastError || new Error('Failed after retries');
 }
 
 export async function searchSpotifyAPI(query: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
@@ -54,11 +78,13 @@ export async function searchITunesAPI(_query: string, _limit: number = 20): Prom
 
 export async function searchDeezerAPI(query: string, limit: number = 20): Promise<UnifiedTrackMetadata[]> {
   try {
-    const response = await fetchJsonWithTimeout(
-      `/api-deezer/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    const token = localStorage.getItem('svzn_token');
+    const response = await fetchWithBackoff(
+      `${BACKEND_URL}/api/deezer/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
     );
 
-    if (!response.ok) throw new Error('Deezer API error');
+    if (!response.ok) throw new Error(`Deezer API error: ${response.status}`);
 
     const data = await response.json();
 
@@ -240,25 +266,46 @@ function searchRelevanceScore(track: UnifiedTrackMetadata, query: string): numbe
   const q = normalizeKey(query);
   const t = normalizeTrackName(track.title);
   const a = normalizeArtistName(track.artist);
+  const combined = normalizeKey(`${track.title} ${track.artist}`);
+
   let score = 0;
-  if (`${t} ${a}` === q) score += 100;
-  if (t === q) score += 80;
-  if (a === q) score += 60;
-  if (t.startsWith(q)) score += 35;
-  if (a.startsWith(q)) score += 25;
-  if (t.includes(q)) score += 15;
-  if (a.includes(q)) score += 10;
+
+  // Exact matches
+  if (`${t} ${a}` === q || combined === q) score += 120;
+  if (t === q) score += 90;
+
+  // Position based
+  if (t.startsWith(q)) score += 40;
+  if (a.startsWith(q)) score += 30;
+
+  // Inclusion
+  if (t.includes(q)) score += 20;
+  if (a.includes(q)) score += 15;
+
+  // Quality & Source boosters
+  if (track.isrc) score += 15; // ISRC is a strong indicator of official content
+  if (track.source === 'spotify') score += 10;
+  if (track.source === 'deezer') score += 8;
   if (track.source === 'itunes') score += 6;
-  if (track.source === 'deezer') score += 4;
-  if (track.source === 'musicbrainz') score -= 2;
-  score += track.popularity ? Math.min(track.popularity, 100) * 0.05 : 0;
+
+  // Popularity scaling (0 to 10 points max)
+  score += track.popularity ? Math.min(track.popularity, 100) * 0.1 : 0;
+
+  // Penalty for obscure sources or lack of artwork
+  if (track.source === 'musicbrainz' && !track.artwork?.medium) score -= 10;
+  if (!track.artwork?.medium && !track.artwork?.large) score -= 5;
+
   return score;
 }
 
 async function searchArtistsLight(query: string, limit: number = 12): Promise<LightArtist[]> {
   const [deezerData, musicBrainzData] = await Promise.allSettled([
     (async () => {
-      const response = await fetchJsonWithTimeout(`/api-deezer/search?q=${encodeURIComponent(query)}&limit=${limit * 2}`);
+      const token = localStorage.getItem('svzn_token');
+      const response = await fetchJsonWithTimeout(
+        `${BACKEND_URL}/api/deezer/search?q=${encodeURIComponent(query)}&limit=${limit * 2}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
       if (!response.ok) return [];
       const data = await response.json();
       return data.data || [];
@@ -308,7 +355,11 @@ async function searchArtistsLight(query: string, limit: number = 12): Promise<Li
 async function searchAlbumsLight(query: string, limit: number = 12): Promise<LightAlbum[]> {
   const [deezerData, musicBrainzData] = await Promise.allSettled([
     (async () => {
-      const response = await fetchJsonWithTimeout(`/api-deezer/search?q=${encodeURIComponent(query)}&limit=${limit * 2}`);
+      const token = localStorage.getItem('svzn_token');
+      const response = await fetchJsonWithTimeout(
+        `${BACKEND_URL}/api/deezer/search?q=${encodeURIComponent(query)}&limit=${limit * 2}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
       if (!response.ok) return [];
       const data = await response.json();
       return data.data || [];

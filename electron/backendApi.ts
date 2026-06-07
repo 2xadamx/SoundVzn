@@ -17,20 +17,13 @@ import {
   LASTFM_API_KEY,
   STRIPE_SECRET_KEY,
   STRIPE_PRICE_ID_PRO,
+  STRIPE_WEBHOOK_SECRET,
 } from './secrets';
 
-// ——— Secrets are compiled into the binary at build time via vite.config.ts `define` ———
-// No .env is read at runtime. Diagnostic (values never logged):
+// ——— Environmental Secrets Loading ———
+// We use dotenv via secrets.ts to load variables from .env at runtime.
 const projectRoot = process.env.SOUNDVZN_USER_DATA || process.cwd();
-const envPath = 'COMPILED_INTO_BINARY';
-console.log('[Backend] Secret availability:', {
-  SPOTIFY_CLIENT_ID: !!SPOTIFY_CLIENT_ID,
-  SPOTIFY_CLIENT_SECRET: !!SPOTIFY_CLIENT_SECRET,
-  LASTFM_API_KEY: !!LASTFM_API_KEY,
-  STRIPE_SECRET_KEY: !!STRIPE_SECRET_KEY,
-  STRIPE_PRICE_ID_PRO: !!STRIPE_PRICE_ID_PRO,
-});
-logInfo(`Backend secrets compiled | projectRoot=${projectRoot}`);
+console.log('[Backend] Initializing API with projectRoot:', projectRoot);
 
 const stripe = new StripeClient(STRIPE_SECRET_KEY || '');
 
@@ -38,29 +31,47 @@ const stripe = new StripeClient(STRIPE_SECRET_KEY || '');
 
 const app = express();
 
+// Auth Middleware Helper
+const authenticateToken = (req: any, res: any, next: any) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Token missing' });
+
+  const payload = authController.verifyAccessToken(token);
+  if (!payload) return res.status(403).json({ error: 'Token invalid or expired' });
+
+  // Fetch full user from DB to ensure all fields (svzn_id, avatar, etc.) are present
+  const user = authController.getFullUser(payload.id);
+  if (!user) return res.status(404).json({ error: 'User no longer exists' });
+
+  req.user = user;
+  next();
+};
+
 // CORS Configuration - Ultra Robust
 app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin as string | undefined;
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
-  }
+  res.header('Access-Control-Allow-Origin', origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Vary', 'Origin');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-SoundVzn-Identity'
+  );
+  res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Type');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return res.status(204).end();
   }
   next();
 });
-
+ 
 // Webhook route MUST be before express.json() for Stripe signatures
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
   const sig = req.headers['stripe-signature'];
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const endpointSecret = STRIPE_WEBHOOK_SECRET;
   let event: Stripe.Event | undefined;
 
   try {
@@ -106,28 +117,86 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), asy
 });
 
 app.use(express.json());
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ ok: true, service: 'soundvzn-backend' });
+});
 const SPOTIFY_HTTP_TIMEOUT_MS = 5000;
 const YT_USER_AGENT =
   process.env.YT_USER_AGENT ||
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 registerYouTubeRoutes(app, YT_USER_AGENT);
-// Auth Polling State
-let pendingAuthToken: string | null = null;
+// ——— Unified Auth Polling State ———
+let pendingAuth = {
+  token: null as string | null,
+  code: null as string | null
+};
 
 app.get('/api/auth/poll', (_req: Request, res: Response) => {
-  if (pendingAuthToken) {
-    const token = pendingAuthToken;
-    pendingAuthToken = null;
-    return res.json({ token });
+  const result = { ...pendingAuth };
+  // Consume once (one-shot polling)
+  pendingAuth.token = null;
+  pendingAuth.code = null;
+  res.json(result);
+});
+
+// Bridge to handle OAuth fragments (Implicit Flow)
+app.get('/callback', (_req: Request, res: Response) => {
+  res.send(`
+    <html>
+      <body style="background:#020205;color:white;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;margin:0;text-align:center;">
+        <div style="padding: 40px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; backdrop-filter: blur(20px);">
+          <div style="width: 48px; height: 48px; border: 3px solid #0ea5e9; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+          <h2 style="color:#fff; margin: 0 0 10px; font-weight: 600;">Sincronizando Cuenta</h2>
+          <p id="status" style="color:rgba(255,255,255,0.5); margin: 0; font-size: 14px;">Conectando de forma segura con SoundVZN...</p>
+          <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+          <script>
+            const hash = window.location.hash.substring(1);
+            const hashParams = new URLSearchParams(hash);
+            const token = hashParams.get('access_token');
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            
+            if (token || code) {
+              fetch('/api/auth/set-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, code })
+              })
+              .then(() => {
+                document.getElementById('status').innerText = '✅ ¡Listo! Puedes cerrar esta pestaña y volver a la aplicación.';
+                document.getElementById('status').style.color = '#10b981';
+              })
+              .catch(err => {
+                document.getElementById('status').innerText = '❌ Error al sincronizar. Inténtalo de nuevo.';
+                document.getElementById('status').style.color = '#ef4444';
+              });
+            } else {
+              document.getElementById('status').innerText = '❌ No se encontró token de acceso.';
+            }
+          </script>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
+app.post('/api/auth/set-token', (req: Request, res: Response) => {
+  const { token, code } = req.body;
+  if (token || code) {
+    pendingAuth.token = token || null;
+    pendingAuth.code = code || null;
+    console.log(`[Auth] Token/Code captured: ${token ? 'TOKEN_RECEIVED' : 'CODE_RECEIVED'}`);
+    return res.json({ success: true });
   }
-  res.json({ token: null });
+  res.status(400).json({ error: 'Token/Code missing' });
 });
 
 app.get('/api/auth/callback', (req: Request, res: Response) => {
   const { token } = req.query;
   if (token) {
-    pendingAuthToken = token as string;
+    pendingAuth.token = token as string;
     return res.send(`
       <div style="background:#020205;color:white;height:100vh;display:flex;align-items:center;justify-center;font-family:sans-serif;text-align:center;">
         <div>
@@ -138,6 +207,39 @@ app.get('/api/auth/callback', (req: Request, res: Response) => {
     `);
   }
   res.status(400).send('Invalid token');
+});
+
+app.post('/api/auth/discord/login', async (req: Request, res: Response) => {
+  try {
+    const { access_token } = req.body;
+    if (!access_token) return res.status(400).json({ error: 'Access token required' });
+    
+    const ip = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '127.0.0.1';
+    const result = await authController.discordLogin(access_token, ip);
+    res.json(result);
+  } catch (error: any) {
+    console.error('[Discord] Login Error:', error.message, error.stack);
+    res.status(500).json({ 
+        error: error.message || 'Error processing Discord login',
+        stack: error.stack,
+        details: error.response?.data
+    });
+  }
+});
+
+app.post('/api/auth/google/login', async (req: Request, res: Response) => {
+  try {
+    const { access_token, code } = req.body;
+    if (!access_token && !code) return res.status(400).json({ error: 'Access token or code required' });
+    
+    const ip = req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || '127.0.0.1';
+    // Pass req.body entirely as authController expects { access_token?, code? }
+    const result = await authController.googleLogin(req.body, ip);
+    res.json(result);
+  } catch (error: any) {
+    console.error('[Google] Login Error:', error.message);
+    res.status(500).json({ error: error.message || 'Error processing Google login' });
+  }
 });
 
 // Proxy for local files to bypass Chrome security
@@ -240,7 +342,6 @@ app.get('/api/debug/diagnostic', async (_req: Request, res: Response) => {
       SPOTIFY_CLIENT_SECRET: !!SPOTIFY_CLIENT_SECRET,
       lastfm_api_key: !!LASTFM_API_KEY,
       google_client_id: !!process.env.VITE_GOOGLE_CLIENT_ID,
-      envPath: envPath,
       userDataPath: projectRoot,
     },
     version: '4.4_f7',
@@ -275,61 +376,9 @@ app.get('/api/debug/diagnostic', async (_req: Request, res: Response) => {
   res.json(diagnostic);
 });
 
-// ——— FASE 1.5: OAuth Bridge for Electron ———
-// Este endpoint sirve una página HTML que extrae el token del fragmento # y lo envía al servidor
-app.get('/callback', (_req: Request, res: Response) => {
-  res.send(`
-    <html>
-      <body style="background: #050505; color: white; font-family: sans-serif; display: flex; flex-direction: column; items-center; justify-content: center; height: 100vh; margin: 0; text-align: center;">
-        <h1 style="font-weight: 900; letter-spacing: -2px; margin-bottom: 8px;">SOUNDVIZION</h1>
-        <p style="color: rgba(255,255,255,0.4); font-weight: bold; font-size: 14px;">AUTENTICACIÓN COMPLETADA</p>
-        <div style="margin-top: 32px; padding: 16px 32px; background: rgba(255,255,255,0.05); border: 1px border rgba(255,255,255,0.1); border-radius: 24px;">
-          <p id="status">Sincronizando con la aplicación...</p>
-        </div>
-        <script>
-          const hash = window.location.hash.substring(1);
-          const params = new URLSearchParams(hash);
-          const token = params.get('access_token');
-          
-          if (token) {
-            fetch('/api/auth/set-token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ token })
-            })
-            .then(() => {
-              document.getElementById('status').innerText = '✅ ¡Listo! Puedes cerrar esta pestaña y volver a SoundVizion.';
-              document.getElementById('status').style.color = '#10b981';
-            })
-            .catch(err => {
-              document.getElementById('status').innerText = '❌ Error al sincronizar. Inténtalo de nuevo.';
-              document.getElementById('status').style.color = '#ef4444';
-            });
-          } else {
-            document.getElementById('status').innerText = '❌ No se encontró token de acceso.';
-          }
-        </script>
-      </body>
-    </html>
-  `);
-});
+// End of unified callback bridge
 
-let latestGoogleToken: string | null = null;
-
-app.post('/api/auth/set-token', (req: Request, res: Response) => {
-  latestGoogleToken = req.body.token;
-  console.log('✅ Google Token captured via callback');
-  res.json({ success: true });
-});
-
-app.get('/api/auth/poll', (_req: Request, res: Response) => {
-  if (latestGoogleToken) {
-    const token = latestGoogleToken;
-    latestGoogleToken = null; // Consumir una sola vez
-    return res.json({ token });
-  }
-  res.json({ token: null });
-});
+// (Removed duplicated auth routes)
 
 // ——— FASE 5: Mega Security Auth Endpoints ———
 
@@ -411,21 +460,140 @@ app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
   }
 });
 
-// Auth Middleware Helper
-const authenticateToken = (req: any, res: any, next: any) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Token missing' });
-
-  const user = authController.verifyAccessToken(token);
-  if (!user) return res.status(403).json({ error: 'Token invalid or expired' });
-
-  req.user = user;
-  next();
-};
-
 app.get('/api/auth/me', authenticateToken, (req: any, res: Response) => {
   res.json({ user: req.user });
+});
+
+// ——— FASE 5.5: Social & Community Features (Consolidated) ———
+
+app.get('/api/social/friends', authenticateToken, (req: any, res: Response) => {
+  try {
+    const friends = authController.social.getFriendsPool(req.user.id);
+    res.json(friends);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/social/requests', authenticateToken, (req: any, res: Response) => {
+  try {
+    const reqs = authController.social.getPendingRequests(req.user.id);
+    res.json(reqs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/social/request', authenticateToken, (req: any, res: Response) => {
+  try {
+    const { target } = req.body;
+    const result = authController.social.addFriendByTarget(req.user.id, target);
+    if (result) res.json({ success: true, target: result });
+    else res.status(404).json({ error: 'User not found or already added' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/social/respond', authenticateToken, (req: any, res: Response) => {
+  try {
+    const { senderId, accept } = req.body;
+    const success = authController.social.respondRequest(req.user.id, senderId, accept);
+    if (success) res.json({ success: true });
+    else res.status(400).json({ error: 'Failed to respond to request' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/social/search', authenticateToken, (req: any, res: Response) => {
+  try {
+    const query = req.query.q as string;
+    console.log(`[Social Search] User ${req.user.id} searching for: ${query}`);
+    if (!query) return res.json([]);
+    const users = authController.social.searchUsers(query);
+    res.json(users);
+  } catch (err: any) {
+    console.error('[Social Search] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/social/status', authenticateToken, (req: any, res: Response) => {
+  try {
+    const success = authController.social.updateActivity(req.user.id, req.body);
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/social/notes', authenticateToken, (req: any, res: Response) => {
+  try {
+    const success = authController.social.saveNote(req.user.id, req.body);
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/social/messages/:friendId', authenticateToken, (req: any, res: Response) => {
+  try {
+    const msgs = authController.social.getChat(req.user.id, req.params.friendId);
+    res.json(msgs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/social/messages', authenticateToken, (req: any, res: Response) => {
+  try {
+    const { targetId, type, content, trackData } = req.body;
+    const ok = authController.social.sendMessage(req.user.id, targetId, type, content, trackData);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/social/friends/:id/pin', authenticateToken, (req: any, res: Response) => {
+  try {
+    const ok = authController.social.togglePin(req.user.id, req.params.id);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/social/friends/:id', authenticateToken, (req: any, res: Response) => {
+  try {
+    const success = authController.social.removeFriend(req.user.id, req.params.id);
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/social/messages/:friendId/clear', authenticateToken, (req: any, res: Response) => {
+  try {
+    const ok = authController.social.clearChat(req.user.id, req.params.friendId);
+    res.json({ success: ok });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ——— FASE 5.6: Profile & User Management ———
+
+app.get('/api/auth/check-username', async (req: Request, res: Response) => {
+  try {
+    const { u } = req.query;
+    if (!u) return res.json({ available: false });
+    const exists = authController.social.checkUsernameExists(u as string);
+    res.json({ available: !exists });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/auth/security-dashboard', authenticateToken, (req: any, res: Response) => {
@@ -439,8 +607,8 @@ app.get('/api/auth/security-dashboard', authenticateToken, (req: any, res: Respo
 
 app.post('/api/auth/update-profile', authenticateToken, async (req: any, res: Response) => {
   try {
-    const { name } = req.body;
-    await authController.updateProfile(req.user.id, { name });
+    const { name, username, avatar, bio, genres } = req.body;
+    await authController.updateProfile(req.user.id, { name, username, avatar, bio, genres });
     res.json({ success: true });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -456,6 +624,245 @@ app.get('/api/auth/audit-logs', authenticateToken, (req: any, res: Response) => 
   }
 });
 
+// ——— FASE 7: Marketplace & Canvas Studio ———
+
+app.get('/api/marketplace/themes', authenticateToken, (_req: any, res: Response) => {
+  try {
+    const themes = authController.marketplace.getThemes();
+    res.json(themes);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/marketplace/inventory', authenticateToken, (req: any, res: Response) => {
+  try {
+    const inventory = authController.marketplace.getUserInventory(req.user.id);
+    res.json(inventory);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/marketplace/balance', authenticateToken, (req: any, res: Response) => {
+  try {
+    const balance = authController.marketplace.getBalance(req.user.id);
+    res.json({ balance });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/marketplace/buy', authenticateToken, async (req: any, res: Response) => {
+  try {
+    const result = await authController.marketplace.buyTheme(req.user.id, req.body.themeId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/marketplace/publish', authenticateToken, (req: any, res: Response) => {
+  try {
+    const result = authController.marketplace.publishTheme(req.user.id, req.body);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+
+
+// ——— FASE 6: Stats & Playback Tracking ———
+
+app.post('/api/stats/log', (req: Request, res: Response) => {
+  const { trackId, trackName, artist, album, coverUrl, durationMs, source, completed } = req.body;
+  const authHeader = req.headers['authorization'];
+  let userId: string | null = null;
+
+  if (authHeader) {
+    const token = authHeader.split(' ')[1];
+    const user = authController.verifyAccessToken(token) as any;
+    if (user) userId = user.id;
+  }
+
+  const success = authController.logPlayback(userId, {
+    trackId,
+    trackName: trackName || req.body.title, // Fallback to title
+    artist,
+    album,
+    coverUrl,
+    durationMs,
+    source,
+    completed
+  });
+  res.json({ success });
+});
+
+// Alias for requested endpoint
+app.post('/api/player/played', (req: Request, res: Response) => {
+  const { trackId, trackName, artist, album, coverUrl, durationMs, source, completed } = req.body;
+  const authHeader = req.headers['authorization'];
+  let userId: string | null = null;
+
+  if (authHeader) {
+    const token = authHeader.split(' ')[1];
+    const user = authController.verifyAccessToken(token) as any;
+    if (user) userId = user.id;
+  }
+
+  const success = authController.logPlayback(userId, {
+    trackId,
+    trackName,
+    artist,
+    album,
+    coverUrl,
+    durationMs,
+    source: source || 'spotify',
+    completed
+  });
+  res.json({ success });
+});
+
+app.get('/api/stats', (req: Request, res: Response) => {
+  const authHeader = req.headers['authorization'];
+  let userId: string | null = null;
+
+  if (authHeader) {
+    const token = authHeader.split(' ')[1];
+    const user = authController.verifyAccessToken(token) as any;
+    if (user) userId = user.id;
+  }
+
+  const stats = authController.getStats(userId);
+  if (stats) res.json(stats);
+  else res.status(500).json({ error: 'Could not retrieve stats' });
+});
+
+// Alias for requested endpoint
+app.get('/api/user/stats', (req: Request, res: Response) => {
+  const authHeader = req.headers['authorization'];
+  let userId: string | null = null;
+
+  if (authHeader) {
+    const token = authHeader.split(' ')[1];
+    const user = authController.verifyAccessToken(token) as any;
+    if (user) userId = user.id;
+  }
+
+  const stats = authController.getStats(userId);
+  if (stats) res.json(stats);
+  else res.status(500).json({ error: 'Could not retrieve stats' });
+});
+
+app.get('/api/stats/global', (_req: Request, res: Response) => {
+  try {
+    const rankings = authController.getGlobalRanking();
+    res.json(rankings);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/user/friends/rankings', authenticateToken, (req: any, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const rankings = authController.getFriendsRanking(userId);
+    res.json(rankings);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/user/continue-listening', (req: Request, res: Response) => {
+  const authHeader = req.headers['authorization'];
+  let userId: string | null = null;
+  if (authHeader) {
+    const token = authHeader.split(' ')[1];
+    const user = authController.verifyAccessToken(token) as any;
+    if (user) userId = user.id;
+  }
+  const tracks = authController.getContinueListening(userId);
+  res.json(tracks);
+});
+
+app.get('/api/user/history', (req: Request, res: Response) => {
+  const authHeader = req.headers['authorization'];
+  let userId: string | null = null;
+  if (authHeader) {
+    const token = authHeader.split(' ')[1];
+    const user = authController.verifyAccessToken(token) as any;
+    if (user) userId = user.id;
+  }
+  const tracks = authController.getHistory(userId);
+  res.json(tracks);
+});
+
+app.get('/api/user/preferences', authenticateToken, (req: any, res: Response) => {
+  try {
+    const prefs = authController.getPreferences(req.user.id);
+    res.json(prefs || {});
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/user/preferences', authenticateToken, (req: any, res: Response) => {
+  try {
+    const success = authController.updatePreferences(req.user.id, req.body);
+    res.json({ success });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/user/preferences', authenticateToken, (req: any, res: Response) => {
+  try {
+    const success = authController.updatePreferences(req.user.id, req.body);
+    res.json({ success });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/lyrics', (req: Request, res: Response) => {
+  const { artist, track } = req.query;
+  const title = track || req.query.title; // Handle both param names
+
+  if (!artist || !title) {
+    return res.status(400).json({ error: 'Requires artist AND track/title' });
+  }
+
+  try {
+    const lyrics = authController.getLyrics(artist as string, title as string);
+    if (lyrics) {
+      return res.json({ found: true, ...lyrics });
+    }
+    res.json({ found: false });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/lyrics', (req: Request, res: Response) => {
+  const { artist, track, title, lyrics, synced, source } = req.body;
+  const trackName = track || title;
+
+  if (!artist || !trackName || !lyrics) {
+    return res.status(400).json({ error: 'Requires artist, track/title, and lyrics' });
+  }
+
+  try {
+    const success = authController.setLyrics(artist, trackName, {
+      lrc_synced: synced || null,
+      plain_text: lyrics,
+      source: source || 'lrclib'
+    });
+    res.json({ success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // MANDATORY Endpoint requested by user: POST /api/spotify-token
 app.post('/api/spotify-token', async (_req: Request, res: Response) => {
   try {
@@ -784,7 +1191,7 @@ app.post('/api/payments/create-checkout-session', async (req: Request, res: Resp
         trial_period_days: 30,
       },
       customer_email: email,
-      return_url: `http://localhost:5199/#/profile?session_id={CHECKOUT_SESSION_ID}&success=true`,
+      return_url: `http://localhost:3000/#/profile?session_id={CHECKOUT_SESSION_ID}&success=true`,
     });
 
     res.json({ clientSecret: session.client_secret });
@@ -814,7 +1221,7 @@ app.post('/api/payments/create-portal-session', async (req: Request, res: Respon
 
     const session = await stripe.billingPortal.sessions.create({
       customer: finalCustomerId,
-      return_url: 'http://localhost:5199/#/profile',
+      return_url: 'http://localhost:3000/#/profile',
     });
     res.json({ url: session.url });
   } catch (error: any) {
@@ -860,12 +1267,14 @@ app.post('/api/auth/welcome-email', async (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
-const BACKEND_PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const BACKEND_PORT = process.env.PORT ? parseInt(process.env.PORT) : 5200;
 
 export function startBackendApi() {
   const server = app.listen(BACKEND_PORT, '0.0.0.0', () => {
-    console.log(`FASE 1.1: Backend Spotify Robusto iniciado en puerto ${BACKEND_PORT}`);
-    logInfo(`Backend started port=${BACKEND_PORT}`);
+    const smtpStatus = process.env.SMTP_USER ? `OK (${process.env.SMTP_USER.substring(0, 3)}…)` : 'MISSING';
+    console.log(`\n🚀 [Backend] API Lista en: http://localhost:${BACKEND_PORT}`);
+    console.log(`FASE 1.1: Backend iniciado | SMTP: ${smtpStatus}\n`);
+    logInfo(`Backend started port=${BACKEND_PORT} smtp=${smtpStatus}`);
   });
 
   // CRITICAL: Disable all timeouts for audio streaming

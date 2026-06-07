@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { usePlayerStore } from '../../store/player';
-import { getDominantColor } from '../../utils/colorExtractor';
+import { getPalette } from '../../utils/colorExtractor';
 
 export const DynamicTheme = () => {
     const currentTrack = usePlayerStore((state) => state.currentTrack);
@@ -14,16 +14,20 @@ export const DynamicTheme = () => {
                 return;
             }
 
-            const color = await getDominantColor(currentTrack.artwork);
-            if (color) {
-                // Extract numbers from rgb(r, g, b)
-                const match = color.match(/\d+/g);
-                if (match && match.length >= 3) {
-                    const [r, g, b] = match;
-                    document.documentElement.style.setProperty('--color-primary', color);
-                    document.documentElement.style.setProperty('--color-primary-rgb', `${r}, ${g}, ${b}`);
-                    console.log(`🎨 Theme updated to match: ${currentTrack.title}`);
-                }
+            const palette = await getPalette(currentTrack.artwork);
+            if (palette) {
+                const { primary, secondary, accent, rgb } = palette;
+
+                document.documentElement.style.setProperty('--color-primary', primary);
+                document.documentElement.style.setProperty('--color-primary-rgb', `${rgb.primary.r}, ${rgb.primary.g}, ${rgb.primary.b}`);
+
+                document.documentElement.style.setProperty('--color-secondary', secondary);
+                document.documentElement.style.setProperty('--color-secondary-rgb', `${rgb.secondary.r}, ${rgb.secondary.g}, ${rgb.secondary.b}`);
+
+                document.documentElement.style.setProperty('--color-accent', accent);
+                document.documentElement.style.setProperty('--color-accent-rgb', `${rgb.accent.r}, ${rgb.accent.g}, ${rgb.accent.b}`);
+
+                console.log(`🎨 Theme palette updated: ${currentTrack.title}`);
             }
         };
 

@@ -1,13 +1,22 @@
 import { create } from 'zustand';
-import { Track, AudioSettings, EQSettings, ThemeConfig, PlaybackContext } from '../types';
+import { Track, AudioSettings, EQSettings, ThemeConfig, PlaybackContext, Mood } from '../types';
 import { toggleFavorite as dbToggleFavorite, updatePlayCount, addTrack } from '../utils/database';
 import { setNetworkOffline } from '@utils/networkGuard';
 import { notificationService } from '@services/notificationService';
+import { socialService } from '../utils/socialService';
+import { BACKEND_URL } from '../utils/apiConfig';
+
+export interface Toast {
+  id: string;
+  type: 'info' | 'success' | 'error' | 'volume' | 'track';
+  message: string;
+  icon?: string;
+  duration?: number;
+}
 
 const FIRST_PLAY_ACHIEVEMENT_KEY = 'soundvzn_first_play_achievement';
 
 let discoveryInFlight = false;
-let playNextInFlight = false;
 
 
 const isPlayableTrack = (track: Track | null | undefined) =>
@@ -67,7 +76,33 @@ async function rememberPlayed(track: Track | null | undefined) {
   try {
     await addTrack(track);
     await updatePlayCount(track.id);
+
+    // Call backend stats logging
+    if ((window as any).electron?.logPlayback) {
+      (window as any).electron.logPlayback(track.id, track.artist, track.title);
+    }
+
     console.log(`[Store] Track persisted to history: ${track.title}`);
+    
+    // Discord Rich Presence update
+    if ((window as any).electron?.updatePresence) {
+      (window as any).electron.updatePresence({
+        title: track.title,
+        artist: track.artist,
+        isPlaying: true, // We call this when we start playing
+        duration: track.duration,
+        currentTime: 0
+      });
+    }
+
+    // Social Activity Broadcast (Friend Activity Feed)
+    socialService.updateActivity('online', {
+      track: track.title,
+      artist: track.artist,
+      cover: track.artwork || null,
+      duration: Math.round(track.duration) || 0,
+      progress: 0
+    }).catch(() => {}); // Silent fail — social is non-critical
   } catch (err) {
     console.error('[Store] Failed to persist history:', err);
   }
@@ -92,9 +127,14 @@ interface PlayerState {
   searchQuery: string;
   scrobbled: boolean;
   discoveryMode: boolean;
+  isRadioMode: boolean;
   isResolving: boolean;
   playbackContext: PlaybackContext | null;
   analyser: AnalyserNode | null;
+  moodLock: boolean;
+  currentMood: Mood;
+  isGlassOpen: boolean;
+  isZenMode: boolean;
 
   // Supreme Pro State
   appearance: 'stellar-dark' | 'radiant-light' | 'vivid-nebula';
@@ -103,6 +143,20 @@ interface PlayerState {
   dataSaver: boolean;
   offlineMode: boolean;
   sleepTimer: number | null;
+  karaokeMode: boolean;
+  hapticFeedback: boolean;
+  autoGain: boolean;
+  reverbPreset: string;
+  reverbMix: number;
+  isQueueOpen: boolean;
+  toasts: Toast[];
+  enableInstantPreview: boolean;
+  activeAudio: 0 | 1;
+  youtubeId: string | null;
+  playbackSource: 'api' | 'iframe';
+  isIframeReady: boolean;
+  deckA: { track: Track | null; isPlaying: boolean; volume: number; vocalMix: number };
+  deckB: { track: Track | null; isPlaying: boolean; volume: number; vocalMix: number };
 
   setAnalyser: (analyser: AnalyserNode | null) => void;
   setPlaybackContext: (context: PlaybackContext | null) => void;
@@ -113,20 +167,39 @@ interface PlayerState {
   setIsPlaying: (isPlaying: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
-  setVolume: (volume: number) => void;
+  setVolume: (volume: number, silent?: boolean) => void;
   setSeekTo: (time: number | null) => void;
   setCurrentIndex: (index: number) => void;
   setIsLyricsOpen: (isOpen: boolean) => void;
+  setIsGlassOpen: (isOpen: boolean) => void;
+  setIsQueueOpen: (isOpen: boolean) => void;
   setSearchQuery: (query: string) => void;
+  logout: () => void;
   toggleMute: () => void;
 
   // Supreme Pro Actions
   setAppearance: (appearance: 'stellar-dark' | 'radiant-light' | 'vivid-nebula') => void;
   setLanguage: (lang: 'es' | 'en' | 'fr' | 'de') => void;
   setStreamingQuality: (quality: 'normal' | 'cd' | 'hi-res') => void;
+  setEnableInstantPreview: (val: boolean) => void;
+  setYoutubeId: (id: string | null) => void;
+  setPlaybackSource: (source: 'api' | 'iframe') => void;
+  setIsIframeReady: (ready: boolean) => void;
   setDataSaver: (enabled: boolean) => void;
   setOfflineMode: (enabled: boolean) => void;
   setSleepTimer: (minutes: number | null) => void;
+  setKaraokeMode: (enabled: boolean) => void;
+  setHapticFeedback: (enabled: boolean) => void;
+  setAutoGain: (enabled: boolean) => void;
+  setReverbPreset: (preset: string) => void;
+  setReverbMix: (mix: number) => void;
+  setIsZenMode: (enabled: boolean) => void;
+  toggleZenMode: () => void;
+  addToast: (toast: Omit<Toast, 'id'>) => void;
+  removeToast: (id: string) => void;
+  loadTrackToDeck: (track: Track, deck: 'A' | 'B') => void;
+  setDeckPlaying: (deck: 'A' | 'B', isPlaying: boolean) => void;
+  setDeckVocalMix: (deck: 'A' | 'B', mix: number) => void;
 
   toggleShuffle: () => void;
   toggleRepeat: () => void;
@@ -140,7 +213,13 @@ interface PlayerState {
   checkScrobble: () => void;
   playUnifiedTrack: (metadata: any, context?: PlaybackContext) => Promise<void>;
   playUnifiedCollection: (metadataList: any[], startIndex?: number, context?: PlaybackContext) => Promise<void>;
+  setMoodLock: (enabled: boolean) => void;
+  setIsRadioMode: (enabled: boolean) => void;
+  addToQueue: (tracks: Track | Track[]) => void;
+  fetchAndExtendQueue: () => Promise<void>;
 }
+
+import { socketManager } from '../utils/socket';
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: null,
@@ -162,7 +241,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     exclusiveMode: false,
     replayGain: false,
     crossfade: 0,
+    spatialSettings: { x: 0, y: 0, z: 1 },
   },
+  isRadioMode: false,
+  isResolving: false,
+  isGlassOpen: false,
+  isZenMode: false,
   eqSettings: {
     enabled: false,
     preset: 'flat',
@@ -181,18 +265,74 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isLyricsOpen: false,
   searchQuery: '',
   scrobbled: false,
-  discoveryMode: true,
-  isResolving: false,
+  discoveryMode: false,
   playbackContext: null,
   analyser: null,
+  moodLock: false,
+  currentMood: 'Neutral',
 
   // Appearance Pro Settings
   appearance: (localStorage.getItem('theme') as any) || 'stellar-dark',
   language: (localStorage.getItem('lang') as any) || 'es',
-  streamingQuality: (localStorage.getItem('audio_quality') as any) || 'hi-res',
+  streamingQuality: (localStorage.getItem('streamingQuality') as any) || 'cd',
+  enableInstantPreview: localStorage.getItem('enableInstantPreview') !== 'false',
   dataSaver: localStorage.getItem('data_saver') === 'true',
   offlineMode: false,
   sleepTimer: null,
+  karaokeMode: false,
+  hapticFeedback: localStorage.getItem('haptic_feedback') !== 'false', // Default true
+  autoGain: localStorage.getItem('auto_gain') === 'true', // Default false
+  reverbPreset: localStorage.getItem('reverb_preset') || 'off',
+  reverbMix: parseFloat(localStorage.getItem('reverb_mix') || '0.5'),
+  isQueueOpen: false,
+  toasts: [],
+  activeAudio: 0,
+  youtubeId: null,
+  playbackSource: 'api',
+  isIframeReady: false,
+  deckA: { track: null, isPlaying: false, volume: 1, vocalMix: 1 },
+  deckB: { track: null, isPlaying: false, volume: 1, vocalMix: 1 },
+
+  setIsRadioMode: (enabled) => set({ isRadioMode: enabled }),
+  setIsQueueOpen: (isOpen) => set({ isQueueOpen: isOpen }),
+  addToQueue: (tracks) => {
+    const list = Array.isArray(tracks) ? tracks : [tracks];
+    set((state) => ({ queue: [...state.queue, ...list] }));
+  },
+  
+  fetchAndExtendQueue: async () => {
+    const { currentTrack, queue } = get();
+    if (!currentTrack || discoveryInFlight) return;
+    
+    discoveryInFlight = true;
+    try {
+      const { MetadataEngine } = await import('@utils/MetadataEngine');
+      const recommendations = await MetadataEngine.getDiscoveryQueue(currentTrack);
+      
+      if (recommendations && recommendations.length > 0) {
+        const newTracks: Track[] = recommendations.slice(0, 20).map((m: any) => ({
+          id: m.externalIds?.deezer || Math.random().toString(36).slice(2, 9),
+          title: m.title,
+          artist: m.artist,
+          album: m.album || 'Discovery',
+          duration: m.duration || 0,
+          artwork: m.artwork?.medium || m.artwork?.large || m.artwork || '',
+          filePath: '',
+          format: 'YouTube',
+          favorite: false,
+          addedDate: new Date().toISOString(),
+          playCount: 0,
+          externalIds: m.externalIds || {}
+        }));
+        
+        set({ queue: [...queue, ...newTracks] });
+      }
+    } catch (e) {
+      console.error('Queue extension failed:', e);
+    } finally {
+      discoveryInFlight = false;
+    }
+  },
 
   setAnalyser: (analyser) => set({ analyser }),
   setPlaybackContext: (context) => set({ playbackContext: context }),
@@ -213,10 +353,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ language });
     localStorage.setItem('lang', language);
   },
-  setStreamingQuality: (streamingQuality) => {
-    set({ streamingQuality });
-    localStorage.setItem('audio_quality', streamingQuality);
+  setStreamingQuality: (quality) => {
+    localStorage.setItem('streamingQuality', quality);
+    set({ streamingQuality: quality });
   },
+  setEnableInstantPreview: (val) => {
+    localStorage.setItem('enableInstantPreview', String(val));
+    set({ enableInstantPreview: val });
+  },
+  setYoutubeId: (youtubeId) => set({ youtubeId }),
+  setPlaybackSource: (playbackSource) => set({ playbackSource }),
+  setIsIframeReady: (isIframeReady) => set({ isIframeReady }),
   setDataSaver: (dataSaver) => {
     set({ dataSaver });
     localStorage.setItem('data_saver', String(dataSaver));
@@ -230,26 +377,197 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ sleepTimer: minutes });
     if (minutes === 0) set({ isPlaying: false, sleepTimer: null });
   },
+  setKaraokeMode: (enabled) => {
+    set({ karaokeMode: enabled });
+    import('../utils/audioProcessor').then(m => m.setKaraokeMode(enabled));
+    get().addToast({
+      type: 'info',
+      message: enabled ? 'Vocal Removal Active 🎤' : 'Vocal Removal Disabled',
+      duration: 2000
+    });
+  },
+  setIsZenMode: (enabled) => set({ isZenMode: enabled }),
+  setHapticFeedback: (enabled) => {
+    localStorage.setItem('haptic_feedback', String(enabled));
+    set({ hapticFeedback: enabled });
+  },
+  setAutoGain: (enabled) => {
+    localStorage.setItem('auto_gain', String(enabled));
+    set({ autoGain: enabled });
+  },
+  loadTrackToDeck: (track, deck) => {
+    if (deck === 'A') set({ deckA: { ...get().deckA, track } });
+    else set({ deckB: { ...get().deckB, track } });
+  },
+  setDeckPlaying: (deck, isPlaying) => {
+    if (deck === 'A') set({ deckA: { ...get().deckA, isPlaying } });
+    else set({ deckB: { ...get().deckB, isPlaying } });
+  },
+  setDeckVocalMix: (deck, mix) => {
+    if (deck === 'A') set({ deckA: { ...get().deckA, vocalMix: mix } });
+    else set({ deckB: { ...get().deckB, vocalMix: mix } });
+  },
+  setReverbPreset: (preset) => {
+    localStorage.setItem('reverb_preset', preset);
+    set({ reverbPreset: preset });
+    import('../utils/audioProcessor').then(m => m.setReverbPreset(preset as any));
+  },
+  setReverbMix: (mix) => {
+    localStorage.setItem('reverb_mix', String(mix));
+    set({ reverbMix: mix });
+    import('../utils/audioProcessor').then(m => m.setReverbMix(mix));
+  },
+  toggleZenMode: () => {
+    const newState = !get().isZenMode;
+    set({ isZenMode: newState });
+    get().addToast({
+      type: 'info',
+      message: newState ? 'Modo Zen Activado 🧘' : 'Modo Estándar Restaurado',
+      duration: 2500
+    });
+  },
+  addToast: (toast) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    set((state) => {
+      // If it's a volume toast, remove previous volume toasts to avoid flooding
+      const filtered = toast.type === 'volume' 
+        ? state.toasts.filter(t => t.type !== 'volume')
+        : state.toasts;
+      return { toasts: [...filtered, { ...toast, id }] };
+    });
+    setTimeout(() => {
+      set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+    }, toast.duration || 3000);
+  },
+  removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
 
   setCurrentTrack: (track) => {
     rememberPlayed(track);
+    socketManager.updateActivity(track);
     // Auto-register track in DB for history and easier favorites
     if (track?.id) {
       addTrack(track).then(() => {
         updatePlayCount(track.id).catch(() => { });
+        if ((window as any).electron?.logPlayback) {
+          (window as any).electron.logPlayback(track.id, track.artist, track.title);
+        }
       }).catch(() => { });
     }
     set({ currentTrack: track, scrobbled: false, currentTime: 0 });
+
+    if (track) {
+      get().addToast({
+        type: 'track',
+        message: `${track.title} • ${track.artist}`,
+        duration: 4000
+      });
+    }
+
+    if (track) {
+      import('../utils/MoodEngine').then(async ({ MoodEngine }) => {
+        const mood = await MoodEngine.detectMood(track);
+        set({ currentMood: mood });
+        console.log(`[Store] Mood detected: ${mood}`);
+      }).catch(err => console.error('Mood detection failed:', err));
+    }
+
+    if (track && (track.title === 'Archivo Local' || track.title === 'Unknown' || !track.artist)) {
+      setTimeout(() => {
+        if (get().currentTrack?.id !== track.id || !get().isPlaying) return;
+
+        import('../utils/FingerprintEngine').then(async ({ FingerprintEngine }) => {
+          const enriched = await FingerprintEngine.enrichUnknownTrack(track);
+          if (enriched) {
+            const { currentTrack, queue } = get();
+            if (currentTrack?.id === track.id) {
+              set({ currentTrack: enriched });
+            }
+            const idx = queue.findIndex(t => t.id === track.id);
+            if (idx !== -1) {
+              const newQueue = [...queue];
+              newQueue[idx] = enriched;
+              set({ queue: newQueue });
+            }
+            get().addToast({
+              type: 'success',
+              message: `Identificado: ${enriched.title} ✨`,
+              duration: 3000
+            });
+          }
+        }).catch(() => { });
+      }, 5000); // Wait 5s of playback to ensure audio is stable
+    }
   },
   setQueue: (queue) => set({ queue }),
-  setIsPlaying: (isPlaying) => set({ isPlaying }),
-  setCurrentTime: (time) => set({ currentTime: time }),
+  setIsPlaying: (isPlaying) => {
+    const { currentTrack, currentTime, duration } = get();
+    if (currentTrack && (window as any).electron?.updatePresence) {
+      (window as any).electron.updatePresence({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        isPlaying,
+        duration,
+        currentTime
+      });
+    }
+    set({ isPlaying });
+  },
+  setCurrentTime: (time) => {
+    const prevTime = get().currentTime;
+    set({ currentTime: time });
+    
+    // Throttle Discord updates to every 5s ONLY when the integer second changes
+    const currentSec = Math.floor(time);
+    const prevSec = Math.floor(prevTime);
+    
+    if (currentSec !== prevSec && currentSec % 5 === 0) {
+      const { currentTrack, isPlaying, duration } = get();
+      if (currentTrack && (window as any).electron?.updatePresence) {
+        (window as any).electron.updatePresence({
+          title: currentTrack.title,
+          artist: currentTrack.artist,
+          isPlaying,
+          duration,
+          currentTime: time
+        });
+      }
+      // Social update every 15s to avoid flooding
+      if (currentSec % 15 === 0 && currentTrack && isPlaying) {
+        socialService.updateActivity('online', {
+          track: currentTrack.title,
+          artist: currentTrack.artist,
+          cover: currentTrack.artwork || null,
+          duration: Math.round(duration) || 0,
+          progress: Math.round(time) || 0
+        }).catch(() => {});
+      }
+    }
+  },
   setDuration: (duration) => set({ duration }),
-  setVolume: (volume) => set({ volume, audioSettings: { ...get().audioSettings, volume } }),
+  setVolume: (volume, silent = false) => {
+    set((state) => ({
+      volume,
+      audioSettings: { ...state.audioSettings, volume }
+    }));
+    if (!silent) {
+      // Here we could trigger a specific silent flag if needed by the UI
+      get().addToast({
+        type: 'volume',
+        message: `${Math.round(volume * 100)}%`,
+        duration: 1500
+      });
+    }
+  },
   setSeekTo: (time) => set({ seekTo: time }),
   setCurrentIndex: (index) => set({ currentIndex: index }),
   setIsLyricsOpen: (isOpen) => set({ isLyricsOpen: isOpen }),
+  setIsGlassOpen: (isOpen) => set({ isGlassOpen: isOpen }),
   setSearchQuery: (query) => set({ searchQuery: query }),
+  logout: () => {
+    localStorage.removeItem('auth_access_token');
+    localStorage.removeItem('google_token');
+    window.location.reload(); // Hard reset for clean state
+  },
   toggleMute: () => set((state) => ({ muted: !state.muted })),
   toggleShuffle: () => set((state) => ({ shuffle: !state.shuffle })),
   toggleRepeat: () => set((state) => ({
@@ -279,132 +597,49 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playNext: async () => {
-    if (playNextInFlight) {
-      console.warn('[Player] playNext already in flight, ignoring...');
+    const { queue, currentIndex, repeat, playbackContext, shuffle, currentTrack, currentTime, currentMood } = get();
+
+    if (currentTrack && currentTime > 0 && currentTime < 30) {
+      import('../utils/TasteAnalyzer').then(m => {
+        m.TasteAnalyzer.registerSkip(currentTrack, currentMood, currentTime);
+      }).catch(err => console.error('Failed to register skip', err));
+    }
+
+    if (queue.length === 0) return;
+
+    if (repeat === 'one') {
+      set({ seekTo: 0, isPlaying: true });
       return;
     }
 
-    playNextInFlight = true;
-    setTimeout(() => { playNextInFlight = false; }, 3000);
+    let nextIndex = currentIndex + 1;
+    
+    if (shuffle) {
+      nextIndex = Math.floor(Math.random() * queue.length);
+    }
 
-    try {
-      const { queue, currentIndex, shuffle, repeat, discoveryMode } = get();
-      if (queue.length === 0) return;
-
-      let nextIndex = currentIndex + 1;
-
-      if (nextIndex >= queue.length) {
-        if (repeat === 'all') {
-          nextIndex = 0;
-        } else if (repeat === 'one') {
-          set({ seekTo: 0, isPlaying: true });
-          return;
-        } else if (discoveryMode) {
-          if (discoveryInFlight) return;
-          discoveryInFlight = true;
-          const currentT = queue[currentIndex];
-
-          try {
-            const { MetadataEngine } = await import('@utils/MetadataEngine');
-            const recommendations = await MetadataEngine.getDiscoveryQueue(currentT);
-
-            if (recommendations.length > 0) {
-              const newTracks: Track[] = recommendations.map(m => ({
-                id: m.externalIds?.deezer || Math.random().toString(36).slice(2, 9),
-                title: m.title,
-                artist: m.artist,
-                album: m.album || 'Discovery',
-                duration: m.duration,
-                artwork: m.artwork?.medium || m.artwork?.large || '',
-                filePath: '',
-                format: 'YouTube',
-                favorite: false,
-                dateAdded: new Date().toISOString(),
-                playCount: 0,
-                externalIds: m.externalIds || {}
-              }));
-
-              set({
-                queue: [...queue, ...newTracks],
-                playbackContext: { type: 'discovery', id: 'smart', name: 'Smart Discovery' }
-              });
-              // Reset flag before recursive call
-              playNextInFlight = false;
-              setTimeout(() => get().playNext(), 100);
-              return;
-            } else {
-              set({ isPlaying: false });
-              return;
-            }
-          } catch (e) {
-            console.error('Discovery failed:', e);
-            set({ isPlaying: false });
+    if (nextIndex < queue.length) {
+      await get().playTrackFromQueue(nextIndex);
+    } else if (repeat === 'all' && queue.length > 0) {
+      await get().playTrackFromQueue(0);
+    } else {
+      // Intentar extender cola si estamos en radio o descubrimiento
+      if (get().discoveryMode || get().isRadioMode) {
+          await get().fetchAndExtendQueue();
+          const updatedQueue = get().queue;
+          if (updatedQueue.length > queue.length) {
+            await get().playTrackFromQueue(nextIndex);
             return;
-          } finally {
-            discoveryInFlight = false;
           }
-        } else {
-          set({ isPlaying: false });
-          return;
-        }
       }
-
-      const resolveIfNeeded = async (index: number): Promise<Track | null> => {
-        const { queue, setIsResolving } = get();
-        const track = queue[index];
-        if (!track) return null;
-        if (isPlayableTrack(track)) return track;
-
-        setIsResolving(true);
-        try {
-          const { MetadataEngine } = await import('@utils/MetadataEngine');
-          const resolved = await MetadataEngine.resolvePlayableTrack(track);
-          if (resolved && isPlayableTrack(resolved)) {
-            const newQueue = [...get().queue];
-            newQueue[index] = resolved;
-            set({ queue: newQueue });
-            return resolved;
-          }
-        } catch (err) {
-          console.error('Failed lazy resolution:', err);
-        } finally {
-          setIsResolving(false);
-        }
-        return null;
-      };
-
-      if (shuffle) {
-        nextIndex = Math.floor(Math.random() * queue.length);
-      }
-
-      const nextTrack = await resolveIfNeeded(nextIndex);
-      if (!nextTrack) {
-        const nextValidIndex = queue.findIndex((_, i) => i > currentIndex && i < queue.length);
-        if (nextValidIndex !== -1) {
-          playNextInFlight = false;
-          get().playTrackFromQueue(nextValidIndex);
-        } else {
-          set({ isPlaying: false });
-        }
-        return;
-      }
-
-      rememberPlayed(nextTrack);
-      set({ currentIndex: nextIndex, currentTrack: nextTrack, isPlaying: true, currentTime: 0 });
-
-      const aheadIdx = (nextIndex + 1) % queue.length;
-      if (aheadIdx !== nextIndex) {
-        resolveIfNeeded(aheadIdx).catch(() => { });
-      }
-    } finally {
-      playNextInFlight = false;
+      set({ isPlaying: false });
     }
   },
 
 
 
   playPrevious: async () => {
-    const { queue, currentIndex, currentTime, setIsResolving } = get();
+    const { queue, currentIndex, currentTime } = get();
     if (queue.length === 0) return;
 
     if (currentTime > 3) {
@@ -412,36 +647,59 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return;
     }
 
-    const prevIndex = currentIndex > 0 ? currentIndex - 1 : queue.length - 1;
-    const track = queue[prevIndex];
-    if (!track) return;
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : (get().repeat === 'all' ? queue.length - 1 : currentIndex);
+    if (prevIndex === currentIndex && currentTime <= 3) return; // No hay previo
 
-    if (isPlayableTrack(track)) {
-      set({ currentIndex: prevIndex, currentTrack: track, isPlaying: true, currentTime: 0 });
-    } else {
-      setIsResolving(true);
-      try {
-        const { MetadataEngine } = await import('@utils/MetadataEngine');
-        const resolved = await MetadataEngine.resolvePlayableTrack(track);
-        if (resolved) {
-          const newQueue = [...get().queue];
-          newQueue[prevIndex] = resolved;
-          set({ queue: newQueue, currentIndex: prevIndex, currentTrack: resolved, isPlaying: true, currentTime: 0 });
-          rememberPlayed(resolved);
-        }
-      } finally {
-        setIsResolving(false);
-      }
-    }
+    await get().playTrackFromQueue(prevIndex);
   },
 
   playTrackFromQueue: async (index: number) => {
-    const { queue, setIsResolving } = get();
+    const { queue, setIsResolving, isPlaying: wasPlaying } = get();
     if (index >= 0 && index < queue.length) {
       const track = queue[index];
+      
+      // Asegurar que forzamos isPlaying a true para que los engines reaccionen
+      set({ isPlaying: true });
+
+      // PRELOAD NEXT: Trigger resolution for the track after this one
+      const nextIdx = index + 1;
+      if (nextIdx < queue.length && !isPlayableTrack(queue[nextIdx])) {
+        import('@utils/MetadataEngine').then(({ MetadataEngine }) => {
+          MetadataEngine.resolvePlayableTrack(queue[nextIdx]).then(resolved => {
+            if (resolved) {
+              const currentQueue = get().queue;
+              const newQueue = [...currentQueue];
+              newQueue[nextIdx] = resolved;
+              set({ queue: newQueue });
+            }
+          });
+        });
+      }
+
       if (isPlayableTrack(track)) {
+        const { activeAudio, audioSettings } = get();
+        const nextAudio = activeAudio === 0 ? 1 : 0;
+        const fadeTime = audioSettings.crossfade || 0;
+
         rememberPlayed(track);
-        set({ currentIndex: index, currentTrack: track, isPlaying: true, currentTime: 0 });
+        
+        if (track.filePath && track.filePath.startsWith('http')) {
+            set({ playbackSource: 'api', isPlaying: true });
+        } else {
+            const ytId = track.externalIds?.youtubeId || (track.id?.length === 11 ? track.id : null);
+            if (ytId) {
+                set({ youtubeId: ytId, playbackSource: 'iframe', isPlaying: true });
+            }
+        }
+
+        if (fadeTime > 0) {
+            import('../utils/audioProcessor').then(({ crossfade }) => {
+                crossfade(nextAudio, fadeTime);
+                set({ activeAudio: nextAudio, currentIndex: index, currentTrack: track, currentTime: 0 });
+            });
+        } else {
+            set({ activeAudio: nextAudio, currentIndex: index, currentTrack: track, currentTime: 0 });
+        }
       } else {
         setIsResolving(true);
         try {
@@ -450,7 +708,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           if (resolved) {
             const newQueue = [...get().queue];
             newQueue[index] = resolved;
-            set({ queue: newQueue, currentIndex: index, currentTrack: resolved, isPlaying: true, currentTime: 0 });
+            
+            if (resolved.filePath && resolved.filePath.startsWith('http')) {
+                set({ playbackSource: 'api', isPlaying: true });
+            } else {
+                const ytId = resolved.externalIds?.youtubeId || (resolved.id?.length === 11 ? resolved.id : null);
+                if (ytId) {
+                  set({ youtubeId: ytId, playbackSource: 'iframe', isPlaying: true });
+                }
+            }
+
+            set({ queue: newQueue, currentIndex: index, currentTrack: resolved, currentTime: 0 });
             rememberPlayed(resolved);
           }
         } finally {
@@ -460,9 +728,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  updateAudioSettings: (settings) => set((state) => ({
-    audioSettings: { ...state.audioSettings, ...settings },
-  })),
+  updateAudioSettings: (settings) => {
+    const newSettings = { ...get().audioSettings, ...settings };
+    set({ audioSettings: newSettings });
+
+    // Sync with audio processor if position changed
+    if (settings.spatialSettings) {
+      const { x, y, z } = settings.spatialSettings;
+      import('../utils/audioProcessor').then(m => m.setSpatialPosition(x, y, z));
+    }
+  },
 
   updateEQSettings: (settings) => set((state) => ({
     eqSettings: { ...state.eqSettings, ...settings },
@@ -480,76 +755,138 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (currentTime >= scrobbleThreshold) {
       set({ scrobbled: true });
       try {
+        // Scrobble to Last.fm
         const { lastfmService } = await import('@utils/lastfm');
         await lastfmService.scrobble(currentTrack.artist, currentTrack.title);
       } catch (err) {
-        console.error('Failed to scrobble:', err);
+        console.error('Failed to scrobble to Last.fm:', err);
       }
+      // Log to backend for stats
+      try {
+        const token = localStorage.getItem('svzn_token');
+        if (token) {
+          fetch('/api/user/scrobble', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+              trackId: currentTrack.id,
+              trackName: currentTrack.title,
+              artist: currentTrack.artist,
+              album: currentTrack.album || '',
+              durationMs: Math.round(duration * 1000),
+            }),
+          }).catch(() => {});
+        }
+      } catch (_) {}
     }
   },
 
   playUnifiedTrack: async (metadata: any, context?: PlaybackContext) => {
-    const { queue, currentIndex, playbackContext, setIsResolving } = get();
+    if (!metadata) return;
+    
+    console.log('[PlayerStore] playUnifiedTrack:', metadata.title);
+    
+    const { queue, currentIndex, playbackContext } = get();
     const isNewContext = !playbackContext || playbackContext.type !== context?.type || playbackContext.id !== context?.id;
     const defaultContext: PlaybackContext = context || { type: 'search', id: metadata.id, name: metadata.title };
 
-    const isDirect = metadata.isLive || metadata.format === 'Radio' ||
-      (typeof metadata.filePath === 'string' && metadata.filePath.trim() !== '' && !metadata.filePath.startsWith('http')) ||
-      (typeof metadata.filePath === 'string' && metadata.filePath.includes('/proxy'));
+    // FASE 1: Preparación Atómica (UI Instantánea)
+    set({ 
+        isResolving: true, 
+        isPlaying: true, 
+        currentTime: 0,
+        playbackContext: defaultContext
+    });
 
-    if (isDirect) {
-      // Fix for local files: use backend proxy if it's a local path
-      let trackToPlay = { ...metadata };
-      if (typeof metadata.filePath === 'string' && !metadata.filePath.startsWith('http') && !metadata.filePath.includes('/proxy') && metadata.filePath.length > 5) {
-        trackToPlay.filePath = `http://localhost:3000/api/local/file?path=${encodeURIComponent(metadata.filePath)}`;
-      }
+    // Asegurar estructura del track
+    const trackToPlay = {
+        ...metadata,
+        id: metadata.id || `ext-${Date.now()}`,
+        artwork: metadata.artwork?.large || metadata.artwork?.medium || metadata.artwork || ""
+    };
 
-      if (isNewContext) {
-        set({ queue: [trackToPlay], currentTrack: trackToPlay, currentIndex: 0, isPlaying: true, playbackContext: defaultContext });
-      } else {
-        const newQueue = [...queue];
-        newQueue.splice(currentIndex + 1, 0, trackToPlay);
-        set({ queue: newQueue, currentTrack: trackToPlay, currentIndex: currentIndex + 1, isPlaying: true, playbackContext: defaultContext });
-      }
-      return;
-    }
-
+    // FASE 2: Gestión de Cola
     if (isNewContext) {
-      set({ queue: [metadata], currentTrack: metadata, currentIndex: 0, isPlaying: true, playbackContext: defaultContext });
+        set({ queue: [trackToPlay], currentTrack: trackToPlay, currentIndex: 0 });
+    } else {
+        const nextIdx = currentIndex + 1;
+        const newQueue = [...queue];
+        newQueue.splice(nextIdx, 0, trackToPlay);
+        set({ queue: newQueue, currentTrack: trackToPlay, currentIndex: nextIdx });
     }
 
-    setIsResolving(true);
+    // FASE 3: Resolución de Fuente (Background)
     try {
-      const { MetadataEngine } = await import('@utils/MetadataEngine');
-      const playable = await MetadataEngine.resolvePlayableTrack(metadata);
-      if (playable && isPlayableTrack(playable)) {
-        if (isNewContext) {
-          set({ queue: [playable], currentTrack: playable, currentIndex: 0, isPlaying: true, playbackContext: defaultContext });
+        const { MetadataEngine } = await import('@utils/MetadataEngine');
+        const playable = await MetadataEngine.resolvePlayableTrack(trackToPlay);
+        
+        if (playable) {
+            const currentQueue = get().queue;
+            const idx = currentQueue.findIndex(t => t.id === trackToPlay.id);
+            
+            if (idx !== -1) {
+                const updatedQueue = [...currentQueue];
+                updatedQueue[idx] = playable;
+
+                // Conmutar fuente
+                const source = playable.filePath ? 'api' : 'iframe';
+                const yid = playable.externalIds?.youtubeId || (playable.id?.length === 11 ? playable.id : null);
+
+                // Si sigue siendo el track actual, actualizar todo
+                if (get().currentIndex === idx) {
+                    set({ 
+                        queue: updatedQueue, 
+                        currentTrack: playable, 
+                        playbackSource: source,
+                        youtubeId: source === 'iframe' ? yid : get().youtubeId,
+                        isPlaying: true
+                    });
+                } else {
+                    set({ queue: updatedQueue });
+                }
+            }
+            
+            const { updatePlayCount } = await import('../utils/database');
+            updatePlayCount(playable.id).catch(() => {});
         } else {
-          const q = [...get().queue];
-          q.splice(currentIndex + 1, 0, playable);
-          set({ queue: q, currentTrack: playable, currentIndex: currentIndex + 1, isPlaying: true, playbackContext: defaultContext });
+            // Resolución fallida — informar al usuario y detener reproducción
+            console.warn('[PlayerStore] Track resolution returned null for:', trackToPlay.title);
+            get().addToast({
+                type: 'error',
+                message: `No se pudo reproducir "${trackToPlay.title}" — sin conexión al servidor`,
+                duration: 5000
+            });
+            set({ isPlaying: false });
         }
-        rememberPlayed(playable);
-      }
+    } catch (error) {
+        console.error('[PlayerStore] Error resolving track:', error);
+        get().addToast({
+            type: 'error',
+            message: `Error al reproducir "${trackToPlay.title}"`,
+            duration: 4000
+        });
+        set({ isPlaying: false });
     } finally {
-      setIsResolving(false);
+        set({ isResolving: false });
+        if (isNewContext && (defaultContext.type === 'search' || defaultContext.type === 'library')) {
+            get().fetchAndExtendQueue().catch(() => {});
+        }
     }
   },
 
+
   playUnifiedCollection: async (metadataList: any[], startIndex: number = 0, context?: PlaybackContext) => {
     if (!Array.isArray(metadataList) || metadataList.length === 0) return;
-    const { setIsResolving } = get();
-
+    
+    // FASE 1: Preparación de tracks y UI instantánea
     const tracks: Track[] = metadataList.map(m => {
       let fPath = m.filePath || '';
-      // Transform local paths to proxy URLs
       if (typeof fPath === 'string' && !fPath.startsWith('http') && !fPath.includes('/proxy') && fPath.length > 5) {
-        fPath = `http://localhost:3000/api/local/file?path=${encodeURIComponent(fPath)}`;
+        fPath = `${BACKEND_URL}/api/local/file?path=${encodeURIComponent(fPath)}`;
       }
 
       return {
-        id: m.id || m.externalIds?.spotify || m.externalIds?.deezer || Math.random().toString(36).slice(2, 9),
+        id: m.id || Math.random().toString(36).slice(2, 9),
         title: m.title || 'Unknown',
         artist: m.artist || 'Unknown Artist',
         album: m.album || (context?.type === 'album' ? context.name : 'Unknown Album'),
@@ -559,26 +896,54 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         format: m.format || 'YouTube',
         favorite: !!m.favorite,
         externalIds: m.externalIds || {},
-        dateAdded: new Date().toISOString(),
+        addedDate: new Date().toISOString(),
         playCount: 0
       };
     });
 
-    set({ queue: tracks, currentIndex: startIndex, currentTrack: tracks[startIndex], playbackContext: context || null, isPlaying: true, currentTime: 0 });
+    const firstTrack = tracks[startIndex];
+    set({ 
+        queue: tracks, 
+        currentIndex: startIndex, 
+        currentTrack: firstTrack, 
+        playbackContext: context || null, 
+        isPlaying: true, 
+        currentTime: 0,
+        playbackSource: firstTrack.filePath ? 'api' : 'iframe',
+        isResolving: true
+    });
 
-    setIsResolving(true);
+    // FASE 2: Resolución del primer track para asegurar sonido
     try {
       const { MetadataEngine } = await import('@utils/MetadataEngine');
-      const resolvedTrack = await MetadataEngine.resolvePlayableTrack(metadataList[startIndex]);
+      const resolved = await MetadataEngine.resolvePlayableTrack(metadataList[startIndex]);
 
-      if (resolvedTrack && isPlayableTrack(resolvedTrack)) {
+      if (resolved) {
         const updatedQueue = [...get().queue];
-        updatedQueue[startIndex] = resolvedTrack;
-        set({ queue: updatedQueue, currentTrack: resolvedTrack, isPlaying: true });
-        rememberPlayed(resolvedTrack);
+        updatedQueue[startIndex] = resolved;
+        
+        const source = resolved.filePath ? 'api' : 'iframe';
+        const yid = resolved.externalIds?.youtubeId || (resolved.id?.length === 11 ? resolved.id : null);
+
+        set({ 
+            queue: updatedQueue, 
+            currentTrack: resolved, 
+            playbackSource: source,
+            youtubeId: source === 'iframe' ? yid : get().youtubeId 
+        });
+        
+        const { updatePlayCount } = await import('../utils/database');
+        updatePlayCount(resolved.id).catch(() => {});
       }
+    } catch (err) {
+      console.error('[PlayerStore] Collection resolution failed:', err);
     } finally {
-      setIsResolving(false);
+      set({ isResolving: false });
     }
+  },
+
+  setMoodLock: (enabled: boolean) => {
+    set({ moodLock: enabled });
+    notificationService.moodLockToggled(enabled, get().currentMood);
   },
 }));

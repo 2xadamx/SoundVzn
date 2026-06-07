@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { usePlayerStore } from '@store/player';
 import { shallow } from 'zustand/shallow';
+import clsx from 'clsx';
 
 interface MiniPlayerProps {
   onClose: () => void;
@@ -18,8 +19,8 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onClose }) => {
     }),
     shallow
   );
-  const [position] = useState({ x: window.innerWidth - 320, y: 100 });
-  const [, setIsDragging] = useState(false);
+  const [position] = useState({ x: window.innerWidth - 340, y: 40 });
+  const [isDragging, setIsDragging] = useState(false);
 
   if (!currentTrack) return null;
 
@@ -39,7 +40,10 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onClose }) => {
         left: position.x,
         zIndex: 9999,
       }}
-      className="w-80 bg-dark-800/95 backdrop-blur-xl rounded-2xl border border-dark-600 shadow-2xl cursor-move"
+      className={clsx(
+        "w-80 bg-dark-800/95 backdrop-blur-xl rounded-2xl border border-dark-600 shadow-2xl cursor-move transition-shadow",
+        isDragging ? "shadow-primary-500/20" : "shadow-2xl"
+      )}
     >
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">

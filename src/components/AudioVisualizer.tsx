@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 interface AudioVisualizerProps {
   audioElement?: HTMLAudioElement | null;
   isPlaying: boolean;
-  mode?: 'bars' | 'waves' | 'circular' | 'particles';
+  mode?: 'bars' | 'waves' | 'circular' | 'particles' | 'orbital' | 'nebula';
   accentColor?: string;
 }
 
@@ -33,7 +33,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
       analyserRef.current = audioContextRef.current.createAnalyser();
       sourceRef.current = audioContextRef.current.createMediaElementSource(audioElement);
       sourceRef.current.connect(analyserRef.current);
-      analyserRef.current.connect(audioContextRef.current.destination);
+      // We don't connect to destination to allow silent analysis (Plan B)
+      // analyserRef.current.connect(audioContextRef.current.destination);
       analyserRef.current.fftSize = 256;
       const bufferLength = analyserRef.current.frequencyBinCount;
       dataArrayRef.current = new Uint8Array(bufferLength);
@@ -52,16 +53,22 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
 
       switch (mode) {
         case 'bars':
-          drawBars(ctx, canvas, dataArray, accentColor);
+          drawBars(ctx, canvas, dataArray as any, accentColor);
           break;
         case 'waves':
-          drawWaves(ctx, canvas, dataArray, accentColor);
+          drawWaves(ctx, canvas, dataArray as any, accentColor);
           break;
         case 'circular':
-          drawCircular(ctx, canvas, dataArray, accentColor);
+          drawCircular(ctx, canvas, dataArray as Uint8Array, accentColor);
           break;
         case 'particles':
-          drawParticles(ctx, canvas, dataArray, accentColor);
+          drawParticles(ctx, canvas, dataArray as Uint8Array, accentColor);
+          break;
+        case 'orbital':
+          drawOrbital(ctx, canvas, dataArray as Uint8Array, accentColor);
+          break;
+        case 'nebula':
+          drawNebula(ctx, canvas, dataArray as Uint8Array, accentColor);
           break;
       }
 
@@ -226,4 +233,78 @@ function drawParticles(
     ctx.arc(x, y + offsetY, size, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+function drawOrbital(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  dataArray: Uint8Array,
+  color: string
+) {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const time = Date.now() / 1000;
+
+  ctx.shadowBlur = 0;
+
+  // Draw 5 main orbital rings
+  for (let r = 0; r < 5; r++) {
+    const bandIndex = Math.floor(r * (dataArray.length / 5));
+    const value = dataArray[bandIndex] / 255;
+    const radius = 50 + r * 40 + value * 20;
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `${color}${Math.floor(value * 40 + 10).toString(16).padStart(2, '0')}`;
+    ctx.lineWidth = 1 + value * 5;
+    ctx.stroke();
+
+    // Orbiting "planets" (frequency peaks)
+    const planetCount = 3;
+    for (let p = 0; p < planetCount; p++) {
+      const angle = time * (1 + r * 0.2) + (p * Math.PI * 2) / planetCount;
+      const px = centerX + Math.cos(angle) * radius;
+      const py = centerY + Math.sin(angle) * radius;
+      const pSize = 2 + value * 8;
+
+      ctx.fillStyle = color;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = color;
+      ctx.beginPath();
+      ctx.arc(px, py, pSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawNebula(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  dataArray: Uint8Array,
+  color: string
+) {
+  const time = Date.now() / 2000;
+  ctx.shadowBlur = 0;
+
+  // Composite multi-layered noise-like gradients
+  for (let i = 0; i < 3; i++) {
+    const bandIndex = Math.floor(i * (dataArray.length / 3));
+    const value = dataArray[bandIndex] / 255;
+
+    const x = (Math.sin(time + i) * 0.3 + 0.5) * canvas.width;
+    const y = (Math.cos(time * 0.8 + i) * 0.2 + 0.5) * canvas.height;
+    const radius = 100 + value * 200;
+
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, `${color}${Math.floor(value * 80).toString(16).padStart(2, '0')}`);
+    gradient.addColorStop(0.5, `${color}20`);
+    gradient.addColorStop(1, 'transparent');
+
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
 }

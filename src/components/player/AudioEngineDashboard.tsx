@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../store/player';
-import { Activity, Clock, TrendingUp, Music4 } from 'lucide-react';
+import { Activity, Clock, TrendingUp, Music4, Sliders, ChevronDown, Move, Lock, Unlock, Sparkles } from 'lucide-react';
 import { getAllTracks } from '../../utils/database';
+import { EQ_PRESETS } from '../../utils/audioProcessor';
+import clsx from 'clsx';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -66,15 +69,106 @@ const ListeningStats: React.FC = () => {
         </div>
     );
 };
+// ─── Spatial 360 ──────────────────────────────────────────────────────────────
+
+const Spatial360: React.FC = () => {
+    const { audioSettings, updateAudioSettings } = usePlayerStore();
+    const pos = audioSettings.spatialSettings || { x: 0, y: 0, z: 1 };
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const handleDrag = (_: any, info: any) => {
+        if (!containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const size = rect.width;
+
+        const centerX = rect.left + size / 2;
+        const centerY = rect.top + size / 2;
+
+        const relX = (info.point.x - centerX) / (size / 2) * 10;
+        const relZ = (info.point.y - centerY) / (size / 2) * 10;
+
+        updateAudioSettings({
+            spatialSettings: {
+                x: Math.max(-10, Math.min(10, relX)),
+                z: Math.max(-10, Math.min(10, relZ)),
+                y: pos.y
+            }
+        });
+    };
+
+    return (
+        <div className="flex flex-col items-center gap-4">
+            <div
+                ref={containerRef}
+                className="w-48 h-48 rounded-full border border-white/10 bg-black/40 relative flex items-center justify-center overflow-hidden"
+            >
+                <div className="absolute inset-0 opacity-10 pointer-events-none">
+                    <div className="absolute top-1/2 left-0 w-full h-px bg-white" />
+                    <div className="absolute left-1/2 top-0 h-full w-px bg-white" />
+                    <div className="absolute inset-4 rounded-full border border-white" />
+                    <div className="absolute inset-12 rounded-full border border-white" />
+                </div>
+
+                <div className="z-10 text-primary-400 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]">
+                    <div className="w-8 h-8 rounded-full bg-primary-500/10 flex items-center justify-center border border-primary-500/30">
+                        <Activity size={14} />
+                    </div>
+                </div>
+
+                <motion.div
+                    drag
+                    dragConstraints={containerRef}
+                    dragMomentum={false}
+                    onDrag={handleDrag}
+                    style={{
+                        x: (pos.x / 10) * 80,
+                        y: (pos.z / 10) * 80,
+                    }}
+                    className="absolute z-20 cursor-grab active:cursor-grabbing"
+                >
+                    <div className="w-6 h-6 rounded-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)] flex items-center justify-center border border-dark-950">
+                        <Music4 size={10} className="text-dark-950" />
+                    </div>
+                    <motion.div
+                        animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute inset-0 rounded-full bg-white/30 -z-10"
+                    />
+                </motion.div>
+
+                <div className="absolute bottom-2 inset-x-0 text-center">
+                    <span className="text-[7px] font-bold text-white/20 uppercase tracking-[0.2em]">3D Soundstage</span>
+                </div>
+            </div>
+
+            <div className="flex gap-4 w-full px-2">
+                <div className="flex-1 space-y-1">
+                    <p className="text-[8px] font-bold text-white/30 uppercase">Elevación (Y)</p>
+                    <input
+                        type="range"
+                        min="-5"
+                        max="5"
+                        step="0.1"
+                        value={pos.y}
+                        onChange={(e) => updateAudioSettings({
+                            spatialSettings: { ...pos, y: parseFloat(e.target.value) }
+                        })}
+                        className="w-full h-1 bg-white/5 rounded-full appearance-none cursor-pointer accent-primary-500"
+                    />
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export const AudioEngineDashboard: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const analyser = usePlayerStore((state) => state.analyser);
-    const isPlaying = usePlayerStore((state) => state.isPlaying);
+    const { analyser, isPlaying, eqSettings, updateEQSettings, moodLock, currentMood, setMoodLock } = usePlayerStore();
     const animationRef = useRef<number>();
     const [stats, setStats] = useState({ bitrate: '—', latency: '—ms', load: '—%' });
+    const [showPresets, setShowPresets] = useState(false);
 
     useEffect(() => {
         if (!canvasRef.current || !analyser) return;
@@ -173,13 +267,159 @@ export const AudioEngineDashboard: React.FC = () => {
                 <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30 pointer-events-none" />
             </div>
 
+            {/* EQ Section */}
+            <div className="px-6 py-5 border-t border-white/[0.06]">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                        <Sliders size={12} className="text-white/30" />
+                        <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest">Ecualizador 10 Bandas</p>
+                    </div>
+
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowPresets(!showPresets)}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold text-white/60 hover:text-white hover:bg-white/10 transition-all uppercase tracking-wider"
+                        >
+                            Preset: {eqSettings.preset}
+                            <ChevronDown size={10} className={clsx("transition-transform", showPresets && "rotate-180")} />
+                        </button>
+
+                        <AnimatePresence>
+                            {showPresets && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 10 }}
+                                    className="absolute bottom-full right-0 mb-2 w-40 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 p-1"
+                                >
+                                    {Object.keys(EQ_PRESETS).map((p) => (
+                                        <button
+                                            key={p}
+                                            onClick={() => {
+                                                updateEQSettings({
+                                                    preset: p as any,
+                                                    enabled: true,
+                                                    bands: (EQ_PRESETS as any)[p].map((gain: number, i: number) => ({
+                                                        frequency: eqSettings.bands[i].frequency,
+                                                        gain,
+                                                        q: 1
+                                                    }))
+                                                });
+                                                setShowPresets(false);
+                                            }}
+                                            className={clsx(
+                                                "w-full text-left px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors",
+                                                eqSettings.preset === p ? "bg-white/10 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                                            )}
+                                        >
+                                            {p.replace('_', ' ')}
+                                        </button>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
+
+                <div className="flex items-end justify-between gap-1 h-32 px-1">
+                    {eqSettings.bands.map((band, i) => (
+                        <div key={i} className="flex flex-col items-center gap-2 flex-1 group">
+                            <div className="relative w-full h-full flex flex-col items-center">
+                                {/* Slider Track */}
+                                <div className="absolute inset-y-0 w-[2px] bg-white/5 rounded-full" />
+
+                                {/* Vertical Slider */}
+                                <input
+                                    type="range"
+                                    min="-12"
+                                    max="12"
+                                    step="0.5"
+                                    value={band.gain}
+                                    onChange={(e) => {
+                                        const newBands = [...eqSettings.bands];
+                                        newBands[i] = { ...newBands[i], gain: parseFloat(e.target.value) };
+                                        updateEQSettings({ bands: newBands, preset: 'custom' });
+                                    }}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-ns-resize z-10"
+                                    style={{ direction: 'rtl', writingMode: 'vertical-lr' as any }}
+                                />
+
+                                {/* Visual Slider Thumb/Track */}
+                                <div
+                                    className="w-1.5 bg-gradient-to-t from-primary-500 to-primary-300 rounded-full transition-all duration-300 group-hover:shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                                    style={{
+                                        height: `${((band.gain + 12) / 24) * 100}%`,
+                                        marginTop: 'auto'
+                                    }}
+                                />
+                            </div>
+                            <span className="text-[7px] text-white/20 font-bold tracking-tighter w-full text-center truncate">
+                                {band.frequency < 1000 ? band.frequency : `${band.frequency / 1000}k`}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             {/* Listening stats */}
-            <div className="px-6 py-5">
+            <div className="px-6 py-5 border-t border-white/[0.06]">
                 <div className="flex items-center gap-2 mb-4">
                     <Activity size={12} className="text-white/30" />
                     <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest">Estadísticas de escucha</p>
                 </div>
                 <ListeningStats />
+            </div>
+
+            {/* Smart Mood Detection Section */}
+            <div className="px-6 py-5 border-t border-white/[0.06] bg-primary-500/5">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                        <Sparkles size={12} className="text-primary-400" />
+                        <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest">Inteligencia de Ánimo</p>
+                    </div>
+                    <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-white/5 border border-white/5">
+                        <span className="text-[8px] font-bold text-white/40 uppercase tracking-tighter">Vibe Actual:</span>
+                        <span className="text-[8px] font-bold text-primary-400 uppercase tracking-wider">
+                            {currentMood || 'Neutral'}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-black/40 border border-white/5 group hover:border-primary-500/30 transition-all">
+                    <div className="flex flex-col">
+                        <span className="text-xs font-bold text-white/90 mb-1 flex items-center gap-1.5">
+                            Vibe Lock (Bloqueo de Ánimo)
+                            {moodLock ? <Lock size={10} className="text-primary-400" /> : <Unlock size={10} className="text-white/20" />}
+                        </span>
+                        <span className="text-[10px] text-white/30 leading-tight">
+                            {moodLock
+                                ? `Fijado en mood ${currentMood}. Manteniendo la energía.`
+                                : 'Auto-Queue seleccionará pistas basadas en la vibración de la sesión.'}
+                        </span>
+                    </div>
+
+                    <button
+                        onClick={() => setMoodLock(!moodLock)}
+                        className={clsx(
+                            "relative w-10 h-5 rounded-full transition-colors duration-300 flex items-center px-1",
+                            moodLock ? "bg-primary-500" : "bg-white/10"
+                        )}
+                    >
+                        <motion.div
+                            animate={{ x: moodLock ? 20 : 0 }}
+                            className="w-3 h-3 rounded-full bg-white shadow-lg"
+                        />
+                    </button>
+                </div>
+            </div>
+
+            {/* Spatial Audio Section */}
+            <div className="px-6 py-5 border-t border-white/[0.06]">
+                <div className="flex items-center gap-2 mb-6">
+                    <Move size={12} className="text-white/30" />
+                    <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest">Simulación Espacial (360°)</p>
+                </div>
+                <Spatial360 />
             </div>
         </div>
     );

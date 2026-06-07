@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import { Track } from '../types';
+import { Track } from '../types/index';
 
 interface LibraryState {
   tracks: Track[];
   isLoading: boolean;
   searchQuery: string;
   selectedGenre: string | null;
-  sortBy: 'title' | 'artist' | 'album' | 'dateAdded';
+  sortBy: 'title' | 'artist' | 'album' | 'addedDate';
   sortOrder: 'asc' | 'desc';
 
   setTracks: (tracks: Track[]) => void;
@@ -16,7 +16,7 @@ interface LibraryState {
   setLoading: (loading: boolean) => void;
   setSearchQuery: (query: string) => void;
   setSelectedGenre: (genre: string | null) => void;
-  setSortBy: (sortBy: 'title' | 'artist' | 'album' | 'dateAdded') => void;
+  setSortBy: (sortBy: 'title' | 'artist' | 'album' | 'addedDate') => void;
   toggleSortOrder: () => void;
   getFilteredTracks: () => Track[];
 }
@@ -26,7 +26,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   isLoading: false,
   searchQuery: '',
   selectedGenre: null,
-  sortBy: 'dateAdded',
+  sortBy: 'addedDate',
   sortOrder: 'desc',
 
   setTracks: (tracks) => set({ tracks }),
@@ -75,8 +75,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         case 'album':
           comparison = a.album.localeCompare(b.album);
           break;
-        case 'dateAdded':
-          comparison = new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime();
+        case 'addedDate':
+          comparison = new Date(a.addedDate).getTime() - new Date(b.addedDate).getTime();
           break;
       }
       return sortOrder === 'asc' ? comparison : -comparison;

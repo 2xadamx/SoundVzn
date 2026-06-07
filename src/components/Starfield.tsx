@@ -1,160 +1,164 @@
-/**
- * Starfield — Canvas 2D puro, fondo de estrellas estático + cometas Rolls-Royce.
- * Las estrellas NO cambian de tamaño al reproducir (comportamiento uniforme).
- * Animación de twinkle muy suave (~3s por ciclo).
- */
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 
-interface Star {
-    x: number;
-    y: number;
-    r: number;           // radio base — nunca cambia
-    baseAlpha: number;
-    twinkleAmp: number;  // amplitud máxima del twinkle (muy pequeña)
-    twinkleFreq: number; // Hz del twinkle (~0.15-0.3 Hz = ciclo cada 3-7s)
-    twinklePhase: number;
-    hue: number;
-}
-
-interface Comet {
-    x: number; y: number;
-    vx: number; vy: number;
-    tailLen: number;
-    life: number; maxLife: number;
-    alpha: number;
-}
-
-export const Starfield = () => {
+export const Starfield: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const rafRef = useRef<number>(0);
-    const startTime = useRef<number>(performance.now());
 
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) return;
 
-        let W = window.innerWidth;
-        let H = window.innerHeight;
-        canvas.width = W;
-        canvas.height = H;
+        let animationId: number;
+        let isMounted = true;
 
-        // ── Crear estrellas ───────────────────────────────────────────
-        const COUNT = 240;
-        const stars: Star[] = Array.from({ length: COUNT }, () => ({
-            x: Math.random() * W,
-            y: Math.random() * H,
-            r: Math.random() * 1.4 + 0.2,           // radio fijo, muy pequeño
-            baseAlpha: Math.random() * 0.5 + 0.15,  // opacidad base
-            twinkleAmp: Math.random() * 0.25 + 0.05, // ±5..30% — twinkle suave
-            twinkleFreq: Math.random() * 0.18 + 0.08, // 0.08–0.26 Hz → períodos 4–12 s
-            twinklePhase: Math.random() * Math.PI * 2,
-            hue: 200 + Math.random() * 40,           // azul-blanco frío
-        }));
+        interface Star {
+            x: number; y: number; r: number;
+            opacity: number; speed: number;
+            color: string; twinkleOffset: number;
+        }
 
-        // ── Cometas ───────────────────────────────────────────────────
+        interface Comet {
+            x: number; y: number;
+            length: number; speed: number;
+            angle: number; opacity: number;
+            active: boolean; life: number;
+        }
+
+        const stars: Star[] = [];
         const comets: Comet[] = [];
-        let lastComet = -5000;
-        const COMET_INTERVAL = 5000; // ms
+        const COLORS = ['#ffffff', '#e0f0ff', '#ffe8d0', '#cce0ff'];
+        let t = 0;
+
+        const resize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+
+        const init = () => {
+            stars.length = 0;
+            const count = Math.min(200, Math.floor((canvas.width * canvas.height) / 8000));
+            for (let i = 0; i < count; i++) {
+                const z = Math.random() * 3 + 1;
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    r: (Math.random() * 0.8 + 0.2) / (z * 0.5),
+                    opacity: Math.random() * 0.4 + 0.1,
+                    speed: (0.01 + Math.random() * 0.03) / z,
+                    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                    twinkleOffset: Math.random() * Math.PI * 2
+                });
+            }
+        };
 
         const spawnComet = () => {
-            const angle = (Math.random() * 30 + 25) * (Math.PI / 180);
-            const speed = Math.random() * 5 + 3.5;
+            const startX = Math.random() * canvas.width * 1.5;
+            const startY = -100;
             comets.push({
-                x: Math.random() * W * 0.55,
-                y: Math.random() * H * 0.45,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                tailLen: Math.random() * 90 + 60,
-                life: 0,
-                maxLife: Math.random() * 55 + 40,
-                alpha: Math.random() * 0.55 + 0.3,
+                x: startX,
+                y: startY,
+                length: 30 + Math.random() * 80,
+                speed: 1.5 + Math.random() * 2.5,
+                angle: Math.PI / 4 + (Math.random() - 0.5) * 0.1,
+                opacity: 0,
+                active: true,
+                life: 0
             });
         };
 
-        const draw = (ts: number) => {
-            rafRef.current = requestAnimationFrame(draw);
-            const t = (ts - startTime.current) / 1000; // segundos transcurridos
+        const draw = () => {
+            if (!isMounted) return;
+            t += 0.003;
 
-            // Fondo oscuro
-            ctx.clearRect(0, 0, W, H);
-            const bg = ctx.createRadialGradient(W * 0.35, H * 0.2, 0, W * 0.5, H * 0.5, Math.max(W, H));
-            bg.addColorStop(0, '#09071c');
-            bg.addColorStop(0.6, '#05040f');
-            bg.addColorStop(1, '#020208');
-            ctx.fillStyle = bg;
-            ctx.fillRect(0, 0, W, H);
+            // Deep space black
+            ctx.fillStyle = '#020205';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Dibujar estrellas — tamaño CONSTANTE, solo opacidad varía suavemente
-            for (const s of stars) {
-                const twinkle = Math.sin(t * s.twinkleFreq * Math.PI * 2 + s.twinklePhase);
-                const alpha = Math.max(0.05, s.baseAlpha + twinkle * s.twinkleAmp);
+            // Batched Star Drawing
+            ctx.save();
+            stars.forEach(s => {
+                s.x -= s.speed * 1.5;
+                if (s.x < 0) s.x = canvas.width;
 
+                const twinkle = Math.sin(t * 1.5 + s.twinkleOffset) * 0.4 + 0.6;
                 ctx.beginPath();
                 ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-                ctx.fillStyle = `hsla(${s.hue}, 65%, 96%, ${alpha})`;
+                ctx.fillStyle = s.color;
+                ctx.globalAlpha = s.opacity * twinkle;
                 ctx.fill();
+            });
+            ctx.restore();
 
-                // Halo sutil en estrellas medianas sin spiking de tamaño
-                if (s.r > 1.1 && alpha > 0.5) {
-                    ctx.beginPath();
-                    ctx.arc(s.x, s.y, s.r * 2.2, 0, Math.PI * 2);
-                    ctx.fillStyle = `hsla(${s.hue}, 80%, 96%, ${alpha * 0.07})`;
-                    ctx.fill();
-                }
+            // Comets / Shooting Stars System
+            if (Math.random() < 0.02 && comets.length < 5) {
+                spawnComet();
             }
-
-            // Cometas
-            if (ts - lastComet > COMET_INTERVAL) { spawnComet(); lastComet = ts; }
 
             for (let i = comets.length - 1; i >= 0; i--) {
                 const c = comets[i];
-                const prog = c.life / c.maxLife;
-                const fade = Math.sin(prog * Math.PI); // fade in/out suave
-                const a = c.alpha * fade;
+                if (!c.active) continue;
 
-                const spd = Math.sqrt(c.vx ** 2 + c.vy ** 2);
-                const tx = c.x - (c.vx / spd) * c.tailLen;
-                const ty = c.y - (c.vy / spd) * c.tailLen;
+                c.life += 0.02;
+                c.x -= Math.cos(c.angle) * c.speed;
+                c.y += Math.sin(c.angle) * c.speed;
 
-                const g = ctx.createLinearGradient(tx, ty, c.x, c.y);
-                g.addColorStop(0, `rgba(255,255,255,0)`);
-                g.addColorStop(0.65, `rgba(200,220,255,${a * 0.25})`);
-                g.addColorStop(1, `rgba(255,255,255,${a})`);
+                // Fade in then out
+                if (c.life < 1) c.opacity = c.life;
+                else if (c.life > 2) c.opacity = Math.max(0, 3 - c.life);
+                
+                if (c.y > canvas.height + c.length || c.opacity <= 0) {
+                    comets.splice(i, 1);
+                    continue;
+                }
 
+                // Draw Comet Tail
+                const tailEndX = c.x + Math.cos(c.angle) * c.length;
+                const tailEndY = c.y - Math.sin(c.angle) * c.length;
+
+                const grad = ctx.createLinearGradient(c.x, c.y, tailEndX, tailEndY);
+                grad.addColorStop(0, `rgba(255, 255, 255, ${c.opacity * 0.9})`);
+                grad.addColorStop(0.1, `rgba(14, 165, 233, ${c.opacity * 0.4})`); // Sky blue tail
+                grad.addColorStop(1, 'rgba(14, 165, 233, 0)');
+
+                ctx.save();
+                // Diffuse glow
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'rgba(14, 165, 233, 0.3)';
+                
                 ctx.beginPath();
-                ctx.moveTo(tx, ty);
-                ctx.lineTo(c.x, c.y);
-                ctx.strokeStyle = g;
-                ctx.lineWidth = 1.2;
+                ctx.moveTo(c.x, c.y);
+                ctx.lineTo(tailEndX, tailEndY);
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 0.8;
                 ctx.lineCap = 'round';
                 ctx.stroke();
 
-                // Punta del cometa
+                // Small comet head
                 ctx.beginPath();
-                ctx.arc(c.x, c.y, 1.8, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255,255,255,${a})`;
+                ctx.arc(c.x, c.y, 1, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${c.opacity})`;
                 ctx.fill();
-
-                c.x += c.vx;
-                c.y += c.vy;
-                c.life++;
-                if (c.life >= c.maxLife || c.x > W + 150 || c.y > H + 150) {
-                    comets.splice(i, 1);
-                }
+                ctx.restore();
             }
+
+            // Subtle nebula wash
+            const grad = ctx.createRadialGradient(canvas.width * 0.5, canvas.height * 0.5, 0, canvas.width * 0.5, canvas.height * 0.5, canvas.width * 0.8);
+            grad.addColorStop(0, 'rgba(10, 20, 40, 0.05)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            animationId = requestAnimationFrame(draw);
         };
 
-        rafRef.current = requestAnimationFrame(draw);
-
-        const onResize = () => {
-            W = window.innerWidth; H = window.innerHeight;
-            canvas.width = W; canvas.height = H;
-        };
+        const onResize = () => { resize(); init(); };
+        resize(); init(); draw();
         window.addEventListener('resize', onResize);
+
         return () => {
-            cancelAnimationFrame(rafRef.current);
+            isMounted = false;
+            cancelAnimationFrame(animationId);
             window.removeEventListener('resize', onResize);
         };
     }, []);
@@ -162,8 +166,8 @@ export const Starfield = () => {
     return (
         <canvas
             ref={canvasRef}
-            style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', width: '100vw', height: '100vh' }}
-            aria-hidden
+            className="fixed inset-0 z-[-1] pointer-events-none"
+            style={{ background: '#020205' }}
         />
     );
 };

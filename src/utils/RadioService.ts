@@ -9,6 +9,7 @@ export interface RadioStation {
     language: string;
     votes: number;
     tags: string[];
+    logo?: string;
 }
 
 class RadioService {
@@ -74,7 +75,7 @@ class RadioService {
             format: 'Radio',
             artwork: station.favicon || 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?q=80&w=200',
             favorite: false,
-            dateAdded: new Date().toISOString(),
+            addedDate: new Date().toISOString(),
             playCount: 0,
             isLive: true
         };

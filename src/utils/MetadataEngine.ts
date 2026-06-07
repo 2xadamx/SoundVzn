@@ -3,12 +3,13 @@ import { UnifiedTrackMetadata, Track } from '../types';
 import { lastfmService } from './lastfm';
 import * as Spotify from './spotifyAPI';
 import { BACKEND_URL } from './apiConfig';
+import { authFetch, publicFetch } from './authSession';
 import { searchYouTubeMusic } from './youtubeAPI';
 import * as Cache from './cacheManager';
 
 async function fetchDeezerJson(path: string) {
     try {
-        const response = await fetch(`/api-deezer${path}`);
+        const response = await publicFetch(`${BACKEND_URL}/api/deezer${path}`);
         if (!response.ok) return null;
         return await response.json();
     } catch {
@@ -23,6 +24,24 @@ async function fetchDeezerJson(path: string) {
 export const MetadataEngine = {
     isLikelySpotifyId(id?: string): boolean {
         return !!id && /^[A-Za-z0-9]{22}$/.test(id);
+    },
+    async getHistory() {
+        try {
+            const response = await authFetch(`${BACKEND_URL}/api/user/history`);
+            if (!response.ok) return [];
+            return await response.json();
+        } catch {
+            return [];
+        }
+    },
+    async getContinueListening() {
+        try {
+            const response = await authFetch(`${BACKEND_URL}/api/user/continue-listening`);
+            if (!response.ok) return [];
+            return await response.json();
+        } catch {
+            return [];
+        }
     },
     /**
      * Performs a deep search across all connected platforms
@@ -332,9 +351,36 @@ export const MetadataEngine = {
         const [chart, chartSpainData] = await Promise.all([
             fetchDeezerJson('/chart/0/tracks?limit=50'),
             fetchDeezerJson('/chart/1175/tracks?limit=10')
-        ]);
+        ]).catch(err => {
+            console.warn('Deezer charts failed, trying Spotify fallback:', err);
+            return [null, null];
+        });
 
-        const chartTracks: any[] = chart?.data || [];
+        let chartTracks: any[] = chart?.data || [];
+
+        // FALLBACK: Try Spotify if Deezer is empty
+        if (chartTracks.length === 0) {
+            try {
+                const { getSpotifyNewReleases } = await import('./spotifyAPI');
+                const spotifyNew = await getSpotifyNewReleases(20);
+                if (spotifyNew && spotifyNew.length > 0) {
+                    chartTracks = spotifyNew.map(t => ({
+                        id: t.id,
+                        title: t.name,
+                        artist: { name: t.artists[0]?.name },
+                        album: { title: t.album.name, cover_medium: t.album.images[1]?.url, cover_big: t.album.images[0]?.url },
+                        duration: Math.floor(t.duration_ms / 1000),
+                        preview: t.preview_url,
+                        source: 'spotify'
+                    }));
+                } else {
+                    // Ultimate fallback: return empty array, don't show fake tracks
+                    chartTracks = [];
+                }
+            } catch (err) {
+                console.error('Spotify fallback failed too:', err);
+            }
+        }
         const trending = chartTracks.map(mapDeezerTrack);
         const topSpain = (chartSpainData?.data || []).map(mapDeezerTrack);
 
@@ -346,7 +392,6 @@ export const MetadataEngine = {
 
         let sameArtistPool: UnifiedTrackMetadata[] = [];
         let relatedPool: UnifiedTrackMetadata[] = [];
-        let emergentPool: UnifiedTrackMetadata[] = [];
         let recommendedArtists: Array<{ id: string; name: string; image?: string }> = [];
 
         if (seedArtist) {
@@ -377,10 +422,16 @@ export const MetadataEngine = {
             }
         }
 
-        emergentPool = trending
-            .filter((t: UnifiedTrackMetadata) => normalize(t.artist) !== normalize(seedArtist))
-            .slice(0, 20);
-
+        const shuffle = (array: any[]) => [...array].sort(() => Math.random() - 0.5);
+        
+        let recommendationsPool = shuffle([...sameArtistPool, ...relatedPool, ...topSpain]);
+        const trendsPool = shuffle(trending);
+        
+        // Fix: Si la pool de recomendaciones está vacía (p. ej. sin seedTrack o fallo de DB), inyectar metadata aleatoria
+        if (recommendationsPool.length === 0) {
+            recommendationsPool = [...trendsPool];
+        }
+        
         const seen = new Set<string>();
         const takeUnique = (list: UnifiedTrackMetadata[], count: number) => {
             const out: UnifiedTrackMetadata[] = [];
@@ -394,12 +445,8 @@ export const MetadataEngine = {
             return out;
         };
 
-        // 40/40/20 => 4 + 4 + 2
-        const recommendations = [
-            ...takeUnique(sameArtistPool, 4),
-            ...takeUnique(relatedPool, 4),
-            ...takeUnique(emergentPool, 2),
-        ];
+        const recommendations = takeUnique(recommendationsPool, 20);
+        const trendingUnique = takeUnique(trendsPool, 30);
 
         const remixSearch = await fetchDeezerJson(`/search?q=${encodeURIComponent(`${seedArtist || 'top'} remix`)}&limit=20`);
         const remixes = ((remixSearch?.data || []) as any[])
@@ -428,12 +475,12 @@ export const MetadataEngine = {
         const dashboard = {
             spotlight,
             recommendations,
-            topSpain,
-            trends: trending.slice(0, 18),
+            topSpain: topSpain.slice(0, 12),
+            trends: trendingUnique.slice(0, 18),
             remixes,
             artists: recommendedArtists,
-            newReleases: trending.slice(0, 12),
-            trending: trending.slice(0, 12),
+            newReleases: trendingUnique.slice(0, 10),
+            trending: trendingUnique.slice(0, 12),
         };
 
         try {
@@ -576,7 +623,9 @@ export const MetadataEngine = {
      * 2) Si no hay preview → buscar en YouTube y reproducir con YouTube Player.
      */
     async resolvePlayableTrack(metadata: any): Promise<Track | null> {
+        console.log(`[MetadataEngine] Resolving track: ${metadata.title} by ${metadata.artist}`);
         if (metadata.isLive || metadata.format === 'Radio') {
+            console.log(`[MetadataEngine] Track is live/radio, returning as is.`);
             return metadata as Track;
         }
 
@@ -586,39 +635,40 @@ export const MetadataEngine = {
         }
 
         // Si es un archivo local (no empieza con http), transformar a URL de Proxy local
-        if (typeof metadata.filePath === 'string' && metadata.filePath.trim() !== '' && !metadata.filePath.startsWith('http')) {
+        if (typeof metadata.filePath === 'string' && !metadata.filePath.startsWith('http') && !metadata.filePath.includes('/proxy') && metadata.filePath.length > 5) {
             const track = { ...metadata };
-            track.filePath = `http://localhost:3000/api/local/file?path=${encodeURIComponent(metadata.filePath)}`;
+            track.filePath = `${BACKEND_URL}/api/local/file?path=${encodeURIComponent(metadata.filePath)}`;
             return track as Track;
         }
 
-          // Resolver directo si ya tenemos YouTube ID
-          const directId = metadata.externalIds?.youtubeId || (metadata.format === 'YouTube' && typeof metadata.id === 'string' ? metadata.id : null);
-          if (directId && directId.length === 11) {
-              return {
-                  id: directId,
-                  title: metadata.title || 'YouTube Track',
-                  artist: metadata.artist || 'Unknown Artist',
-                  album: metadata.album || 'SoundVizion Stream',
-                  duration: metadata.duration || 0,
-                  filePath: `${BACKEND_URL}/api/youtube/stream/${directId}/proxy`,
-                  format: 'YouTube',
-                  bitrate: 192,
-                  sampleRate: 48000,
-                  artwork: metadata.artwork?.large || metadata.artwork?.medium || '',
-                  favorite: false,
-                  dateAdded: new Date().toISOString(),
-                  playCount: 0,
-                  externalIds: {
-                      spotify: metadata.externalIds?.spotify,
-                      isrc: metadata.isrc,
-                      youtubeId: directId
-                  }
-              };
-          }
+        // Resolver directo si ya tenemos YouTube ID
+        const directId = metadata.externalIds?.youtubeId || (metadata.format === 'YouTube' && typeof metadata.id === 'string' ? metadata.id : null);
+        if (directId && directId.length === 11) {
+            console.log(`[MetadataEngine] Using known YouTube ID: ${directId}`);
+            return {
+                id: directId,
+                title: metadata.title || 'YouTube Track',
+                artist: metadata.artist || 'Unknown Artist',
+                album: metadata.album || 'SoundVizion Stream',
+                duration: metadata.duration || 0,
+                filePath: `${BACKEND_URL}/api/youtube/stream/${directId}/proxy`,
+                format: 'YouTube',
+                bitrate: 192,
+                sampleRate: 48000,
+                artwork: metadata.artwork?.large || metadata.artwork?.medium || '',
+                favorite: false,
+                addedDate: new Date().toISOString(),
+                playCount: 0,
+                externalIds: {
+                    spotify: metadata.externalIds?.spotify,
+                    isrc: metadata.isrc,
+                    youtubeId: directId
+                }
+            };
+        }
 
-          // const previewUrl = metadata.previewUrl ?? metadata.preview_url;
-          // const hasValidPreview = typeof previewUrl === 'string' && previewUrl.trim().length > 0 && previewUrl.startsWith('http');
+        // const previewUrl = metadata.previewUrl ?? metadata.preview_url;
+        // const hasValidPreview = typeof previewUrl === 'string' && previewUrl.trim().length > 0 && previewUrl.startsWith('http');
 
         try {
             const rawTitle = (metadata.title || '').trim();
@@ -642,6 +692,7 @@ export const MetadataEngine = {
                 }) || ytResults[0];
 
                 if (yt?.videoId) {
+                    console.log(`[MetadataEngine] Found YouTube match: ${yt.videoId} ("${yt.title}") for query: "${query}"`);
                     return {
                         id: yt.videoId,
                         title: metadata.title || yt.title,
@@ -654,7 +705,7 @@ export const MetadataEngine = {
                         sampleRate: 48000,
                         artwork: metadata.artwork?.large || metadata.artwork?.medium || yt.thumbnail,
                         favorite: false,
-                        dateAdded: new Date().toISOString(),
+                        addedDate: new Date().toISOString(),
                         playCount: 0,
                         externalIds: {
                             spotify: metadata.externalIds?.spotify,
@@ -702,36 +753,81 @@ export const MetadataEngine = {
     async getDiscoveryQueue(seedTrack: Track): Promise<UnifiedTrackMetadata[]> {
         try {
             const seedArtist = seedTrack.artist.split(',')[0].trim();
-            const artistSearch = await fetchDeezerJson(`/search/artist?q=${encodeURIComponent(seedArtist)}&limit=1`);
-            const artist = artistSearch?.data?.[0];
+            const seedTitle = seedTrack.title;
 
-            if (!artist?.id) return [];
-
-            const [related, topTracks] = await Promise.all([
-                fetchDeezerJson(`/artist/${artist.id}/related?limit=5`),
-                fetchDeezerJson(`/artist/${artist.id}/top?limit=10`)
+            // Fetch from multiple sources for better AI coverage
+            const [deezerSearchResults, lfmSimilar] = await Promise.all([
+                fetchDeezerJson(`/search/artist?q=${encodeURIComponent(seedArtist)}&limit=1`),
+                lastfmService.getSimilarTracks(seedArtist, seedTitle, 10).catch(() => [])
             ]);
 
-            const relatedArtists = related?.data || [];
-            const seedTopTracks = (topTracks?.data || []).map((t: any) => this.mapDeezerTrack(t));
+            const artist = deezerSearchResults?.data?.[0];
+            let combinedResults: UnifiedTrackMetadata[] = [];
 
-            const relatedTopTracksResults = await Promise.all(
-                relatedArtists.map((a: any) => fetchDeezerJson(`/artist/${a.id}/top?limit=5`))
-            );
+            // 1. Process Deezer Related Data
+            if (artist?.id) {
+                const [related, topTracks] = await Promise.all([
+                    fetchDeezerJson(`/artist/${artist.id}/related?limit=5`),
+                    fetchDeezerJson(`/artist/${artist.id}/top?limit=10`)
+                ]);
 
-            const relatedTopTracks = relatedTopTracksResults.flatMap((r: any) => (r?.data || []).map((t: any) => this.mapDeezerTrack(t)));
+                const relatedArtists = related?.data || [];
+                const seedTopTracks = (topTracks?.data || []).map((t: any) => this.mapDeezerTrack(t));
 
-            const combined = [
-                ...seedTopTracks.slice(0, 5),
-                ...relatedTopTracks
-            ].filter((t, index, self) =>
-                self.findIndex(s => s.title.toLowerCase() === t.title.toLowerCase()) === index &&
-                t.title.toLowerCase() !== seedTrack.title.toLowerCase()
-            );
+                const relatedTopTracksResults = await Promise.all(
+                    relatedArtists.map((a: any) => fetchDeezerJson(`/artist/${a.id}/top?limit=5`))
+                );
 
-            return combined.sort(() => Math.random() - 0.5).slice(0, 15);
+                const relatedTopTracks = relatedTopTracksResults.flatMap((r: any) => (r?.data || []).map((t: any) => this.mapDeezerTrack(t)));
+                combinedResults.push(...seedTopTracks, ...relatedTopTracks);
+            }
+
+            // 2. Process Last.fm Similar Tracks (High quality musical relationship)
+            if (lfmSimilar.length > 0) {
+                const lfmMapped = lfmSimilar.map(s => ({
+                    title: s.name,
+                    artist: s.artist,
+                    album: '',
+                    duration: 0,
+                    source: 'lastfm' as const,
+                    artwork: { small: '', medium: '', large: '', extralarge: '' },
+                    externalIds: {}
+                }));
+                combinedResults.push(...lfmMapped);
+            }
+
+            // 3. Advanced Deduplication and Relevance Filter
+            const seen = new Set<string>();
+            const normalizedSeed = seedTitle.toLowerCase().trim();
+
+            let TasteAnalyzer: any = null;
+            try {
+                const mod = await import('./TasteAnalyzer');
+                TasteAnalyzer = mod.TasteAnalyzer;
+            } catch (e) { }
+
+            const finalQueue = combinedResults.filter(t => {
+                const key = `${t.title.toLowerCase().trim()}|${t.artist.toLowerCase().trim()}`;
+                if (seen.has(key)) return false;
+                if (t.title.toLowerCase().trim() === normalizedSeed) return false;
+                
+                if (TasteAnalyzer) {
+                    // Quick check, omitting mood for now to just check skipped artists
+                    // We cast t as any since UnifiedTrackMetadata is similar enough to Track for .artist
+                    if (TasteAnalyzer.isTrackPenalized(t as any, 'Neutral')) {
+                        console.log(`[TasteAnalyzer] Filtered out ${t.artist} - ${t.title} from Discovery automatically.`);
+                        return false;
+                    }
+                }
+
+                seen.add(key);
+                return true;
+            });
+
+            // Shuffle and return best matches
+            return finalQueue.sort(() => Math.random() - 0.5).slice(0, 15);
         } catch (error) {
-            console.error('Discovery v2 failed:', error);
+            console.error('Discovery v2 (Hybrid) failed:', error);
             return [];
         }
     },

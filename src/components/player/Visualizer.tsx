@@ -8,6 +8,7 @@ export const Visualizer: React.FC<{ className?: string }> = ({ className }) => {
     const animationRef = useRef<number>();
 
     useEffect(() => {
+        let isMounted = true;
         if (!analyser || !canvasRef.current) return;
 
         const canvas = canvasRef.current;
@@ -18,6 +19,7 @@ export const Visualizer: React.FC<{ className?: string }> = ({ className }) => {
         const dataArray = new Uint8Array(bufferLength);
 
         const draw = () => {
+            if (!isMounted) return;
             animationRef.current = requestAnimationFrame(draw);
 
             analyser.getByteFrequencyData(dataArray);
@@ -26,35 +28,37 @@ export const Visualizer: React.FC<{ className?: string }> = ({ className }) => {
             const height = canvas.height;
             ctx.clearRect(0, 0, width, height);
 
-            const barWidth = (width / bufferLength) * 2.5;
+            // REINFORCEMENT: Symmetric High-Fidelity Rendering
+            const barWidth = (width / (bufferLength / 2)) * 1.2;
             let barHeight;
-            let x = 0;
+            let x = width / 2;
+            let xRev = width / 2;
 
-            for (let i = 0; i < bufferLength; i++) {
+            for (let i = 0; i < bufferLength / 2; i++) {
                 barHeight = (dataArray[i] / 255) * height;
+                const opacity = (dataArray[i] / 255) * 0.8;
+                ctx.fillStyle = `rgba(255, 255, 255, ${opacity + 0.1})`;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = `rgba(79, 70, 229, ${opacity})`;
 
-                // Create a nice gradient based on CSS variables
-                const gradient = ctx.createLinearGradient(0, height, 0, 0);
-                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
-                gradient.addColorStop(1, 'rgba(255, 255, 255, 0.6)');
-
-                ctx.fillStyle = gradient;
-
-                // Rounded bars
-                const radius = 2;
-                const barX = x;
-                const barY = height - barHeight;
+                const radius = 1;
                 ctx.beginPath();
-                ctx.roundRect(barX, barY, barWidth - 1, barHeight, radius);
+                ctx.roundRect(x, height - barHeight, Math.max(0.5, barWidth - 1.5), barHeight, radius);
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.roundRect(xRev - barWidth, height - barHeight, Math.max(0.5, barWidth - 1.5), barHeight, radius);
                 ctx.fill();
 
                 x += barWidth;
+                xRev -= barWidth;
             }
         };
 
         draw();
 
         return () => {
+            isMounted = false;
             if (animationRef.current) {
                 cancelAnimationFrame(animationRef.current);
             }

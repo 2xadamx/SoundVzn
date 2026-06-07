@@ -5,8 +5,9 @@ import {
     EmbeddedCheckout
 } from '@stripe/react-stripe-js';
 import { X } from 'lucide-react';
+import { BACKEND_URL } from '../utils/apiConfig';
 
-const stripePromise = loadStripe('pk_test_51T3fngB6j8MK6V9XdZnlaU13czfsHbwPzllFrEEFNZvcMXcI1TIqI5vXSjQYuXBlDZWeX1gmZi8dy8KJ97fcQojL00zZTHf3k9');
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 interface StripeEmbeddedCheckoutProps {
     email: string;
@@ -15,9 +16,9 @@ interface StripeEmbeddedCheckoutProps {
 
 const StripeEmbeddedCheckout: React.FC<StripeEmbeddedCheckoutProps> = ({ email, onClose }) => {
     const fetchClientSecret = useCallback(() => {
-        return fetch('http://localhost:3000/api/payments/create-checkout-session', {
+        return fetch(`${BACKEND_URL}/api/payments/create-checkout-session`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-SoundVzn-Identity': 'SVZN-CORE-AUTH' },
             body: JSON.stringify({ email })
         })
             .then((res) => res.json())

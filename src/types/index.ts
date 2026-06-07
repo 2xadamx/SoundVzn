@@ -1,5 +1,6 @@
 export interface Track {
   id: string;
+  offline?: boolean;
   title: string;
   artist: string;
   album: string;
@@ -13,7 +14,7 @@ export interface Track {
   genre?: string;
   artwork?: string;
   favorite: boolean;
-  dateAdded: string;
+  addedDate: string;
   lastPlayed?: string;
   playCount: number;
   externalIds?: {
@@ -25,7 +26,10 @@ export interface Track {
     youtubeId?: string;
   };
   isLive?: boolean;
+  source?: string;
 }
+
+export type Mood = 'Chill' | 'Dynamic' | 'Dark' | 'Party' | 'Melancholic' | 'Neutral';
 
 export interface Playlist {
   id: string;
@@ -38,7 +42,7 @@ export interface Playlist {
   isLiked?: boolean; // Followed/Liked playlist
 }
 
-export type PlaybackContextType = 'album' | 'artist' | 'search' | 'library' | 'radio' | 'discovery';
+export type PlaybackContextType = 'playlist' | 'album' | 'artist' | 'search' | 'library' | 'radio' | 'discovery';
 
 export interface PlaybackContext {
   type: PlaybackContextType;
@@ -56,6 +60,7 @@ export interface AudioSettings {
   exclusiveMode: boolean;
   replayGain: boolean;
   crossfade: number;
+  spatialSettings: { x: number; y: number; z: number };
 }
 
 export interface EQBand {
@@ -95,9 +100,9 @@ export interface ElectronAPI {
   minimize: () => void;
   maximize: () => void;
   close: () => void;
+  toggleMiniPlayer: () => Promise<void>;
   downloadTrack: (videoId: string, title?: string, artist?: string) => Promise<{ success: boolean; filePath?: string; alreadyExists?: boolean; error?: string }>;
   getDownloadPath: (videoId: string) => Promise<string | null>;
-  getStorageSize: () => Promise<number>;
   openDownloadFolder: () => Promise<void>;
   onDownloadProgress: (callback: (data: { videoId: string; percent: number }) => void) => void;
   saveData: (key: string, data: any) => Promise<{ success: boolean; error?: string }>;
@@ -110,6 +115,8 @@ export interface ElectronAPI {
   saveAvatar: (filePath: string) => Promise<string | null>;
   submitBug: (data: { description: string; includeLogs: boolean; email?: string }) =>
     Promise<{ success: boolean; path?: string; error?: string }>;
+  getStorageSize?: () => Promise<number>;
+  updatePresence?: (data: { title: string; artist: string; isPlaying: boolean; duration: number; currentTime: number }) => void;
 }
 
 declare global {

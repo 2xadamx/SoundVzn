@@ -1,56 +1,96 @@
 import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '../../store/player';
-import { shallow } from 'zustand/shallow';
 
 /**
- * AudioPreloader — Gestión inteligente de caché anticipada.
- * Activa el preload cuando falta un 30% de la canción actual o los últimos 45 segundos.
- * Se anticipa mucho más para evitar esperas entre pistas.
+ * AudioPreloader — Precarga inteligente de la siguiente pista.
+ * Activa el preload cuando queda un 30% de la canción actual o menos de 45 segundos.
+ * Para tracks de YouTube: resuelve el filePath con antelación y lo inyecta en la cola.
+ * Para tracks locales: usa un <audio> oculto con preload="metadata".
  */
 export const AudioPreloader = () => {
-    const { currentTrack, queue, currentIndex, currentTime, duration } = usePlayerStore(
-        (state) => ({
-            currentTrack: state.currentTrack,
-            queue: state.queue,
-            currentIndex: state.currentIndex,
-            currentTime: state.currentTime,
-            duration: state.duration,
-        }),
-        shallow
-    );
-    const lastPreloadedId = useRef<string | null>(null);
+    const currentTrack  = usePlayerStore(s => s.currentTrack);
+    const queue         = usePlayerStore(s => s.queue);
+    const currentIndex  = usePlayerStore(s => s.currentIndex);
+    const currentTime   = usePlayerStore(s => s.currentTime);
+    const duration      = usePlayerStore(s => s.duration);
+    const setQueue      = usePlayerStore(s => s.setQueue);
+
+    const lastPreloadedId  = useRef<string | null>(null);
+    const preloadAudioRef  = useRef<HTMLAudioElement | null>(null);
+
+    // Crear el elemento de audio oculto una sola vez
+    useEffect(() => {
+        const audio = new Audio();
+        audio.preload = 'metadata';
+        preloadAudioRef.current = audio;
+        return () => {
+            audio.src = '';
+            audio.load();
+        };
+    }, []);
 
     useEffect(() => {
         if (!currentTrack || !duration || duration <= 0) return;
 
-        // Configuration: Preload agressively
-        // We preload as soon as the current track is playing (more than 2 seconds)
-        // to ensure the next one is ready whenever the user skips or it ends.
-        if (currentTime > 2) {
-            const nextIndex = currentIndex + 1;
-            const nextTrack = queue[nextIndex];
+        // Activar preload cuando queda 30% o menos de 45s
+        const timeLeft = duration - currentTime;
+        const percentLeft = timeLeft / duration;
+        const shouldPreload = percentLeft <= 0.3 || timeLeft <= 45;
 
-            if (nextTrack && nextTrack.id !== lastPreloadedId.current) {
-                // Determine source
-                const videoId = nextTrack.externalIds?.youtubeId || (nextTrack.id.length === 11 ? nextTrack.id : null);
+        if (!shouldPreload) return;
 
-                if (videoId) {
-                    console.log(`🚀 Preloading NEXT track (aggressive): ${nextTrack.title} (${videoId})`);
-                    lastPreloadedId.current = nextTrack.id;
+        const nextIndex = currentIndex + 1;
+        const nextTrack = queue[nextIndex];
+        if (!nextTrack || nextTrack.id === lastPreloadedId.current) return;
 
-                    // Send preload hint to the backend
-                    fetch(`http://localhost:3000/api/youtube/stream/${videoId}/preload`)
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.available) {
-                                console.log(`✅ Preload cached successfully: ${nextTrack.title}`);
-                            }
-                        })
-                        .catch(err => console.warn(`❌ Preload hint failed for ${nextTrack.title}:`, err));
-                }
+        lastPreloadedId.current = nextTrack.id;
+
+        // Si ya tiene filePath resuelto, precargar con audio element
+        if (nextTrack.filePath && nextTrack.filePath.startsWith('http')) {
+            if (preloadAudioRef.current) {
+                preloadAudioRef.current.src = nextTrack.filePath;
+                preloadAudioRef.current.load();
             }
+            return;
         }
-    }, [currentTime, duration, currentIndex, queue, currentTrack]);
+
+        // Si es un track de YouTube sin resolver, resolverlo en background
+        const youtubeId = nextTrack.externalIds?.youtubeId ||
+            (typeof nextTrack.id === 'string' && nextTrack.id.length === 11 ? nextTrack.id : null);
+
+        if (youtubeId || !nextTrack.filePath) {
+            import('../../utils/MetadataEngine').then(async ({ MetadataEngine }) => {
+                try {
+                    const resolved = await MetadataEngine.resolvePlayableTrack(nextTrack);
+                    if (!resolved) return;
+
+                    // Inyectar el track resuelto en la cola para que esté listo
+                    const currentQueue = usePlayerStore.getState().queue;
+                    const idx = currentQueue.findIndex(t => t.id === nextTrack.id);
+                    if (idx !== -1 && usePlayerStore.getState().currentIndex !== idx) {
+                        const newQueue = [...currentQueue];
+                        newQueue[idx] = resolved;
+                        setQueue(newQueue);
+                        console.log(`[Preloader] Pre-resolved: ${resolved.title}`);
+                    }
+
+                    // Precargar el audio
+                    if (resolved.filePath && preloadAudioRef.current) {
+                        preloadAudioRef.current.src = resolved.filePath;
+                        preloadAudioRef.current.load();
+                    }
+                } catch {
+                    // Silencioso — el preload es best-effort
+                }
+            }).catch(() => {});
+        }
+    }, [
+        // Solo re-ejecutar cuando cambia el segundo actual (throttle natural)
+        Math.floor(currentTime),
+        currentIndex,
+        currentTrack?.id,
+        duration,
+    ]);
 
     return null;
 };

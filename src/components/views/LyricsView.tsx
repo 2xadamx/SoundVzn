@@ -1,22 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, MoreHorizontal, MessageSquare, Volume2, SkipBack, SkipForward, Play, Pause, Heart } from 'lucide-react';
+import { ChevronDown, MessageSquare, SkipBack, SkipForward, Play, Pause, Heart } from 'lucide-react';
 import { usePlayerStore } from '../../store/player';
-import clsx from 'clsx';
 import { shallow } from 'zustand/shallow';
+import { LyricsEngine } from '../../utils/LyricsEngine';
+
+const formatTime = (time: number) => {
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 export const LyricsView: React.FC = () => {
     const {
-        currentTrack,
-        isPlaying,
-        setIsPlaying,
-        playNext,
-        playPrevious,
-        currentTime,
-        duration,
-        setSeekTo,
-        setIsLyricsOpen,
-        volume
+        currentTrack, isPlaying, setIsPlaying,
+        playNext, playPrevious, currentTime, duration,
+        setSeekTo, setIsLyricsOpen, toggleFavorite
     } = usePlayerStore(
         (state) => ({
             currentTrack: state.currentTrack,
@@ -28,245 +27,251 @@ export const LyricsView: React.FC = () => {
             duration: state.duration,
             setSeekTo: state.setSeekTo,
             setIsLyricsOpen: state.setIsLyricsOpen,
-            volume: state.volume,
+            toggleFavorite: state.toggleFavorite,
         }),
         shallow
     );
 
     const scrollRef = useRef<HTMLDivElement>(null);
+    const linesRef = useRef<(HTMLParagraphElement | null)[]>([]);
     const [lyrics, setLyrics] = useState<{ time: number; text: string }[]>([]);
     const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
+    const [activeIdx, setActiveIdx] = useState(-1);
+    const [artworkColor, setArtworkColor] = useState('0,0,0');
 
-    // Fetch real lyrics from LRCLIB
+    // Extract dominant color from artwork for dynamic background
     useEffect(() => {
-        const fetchLyrics = async () => {
+        if (!currentTrack?.artwork) return;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = currentTrack.artwork;
+        img.onload = () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 10; canvas.height = 10;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                ctx.drawImage(img, 0, 0, 10, 10);
+                const data = ctx.getImageData(0, 0, 10, 10).data;
+                let r = 0, g = 0, b = 0;
+                for (let i = 0; i < data.length; i += 4) { r += data[i]; g += data[i + 1]; b += data[i + 2]; }
+                const count = data.length / 4;
+                setArtworkColor(`${Math.floor(r / count)},${Math.floor(g / count)},${Math.floor(b / count)}`);
+            } catch {
+                setArtworkColor('30,30,40');
+            }
+        };
+    }, [currentTrack?.artwork]);
+
+    useEffect(() => {
+        const fetch = async () => {
             if (!currentTrack) return;
             setIsLoadingLyrics(true);
+            setLyrics([]);
+            setActiveIdx(-1);
             try {
-                const query = encodeURIComponent(`${currentTrack.artist} ${currentTrack.title}`);
-                const response = await fetch(`https://lrclib.net/api/search?q=${query}`);
-                const data = await response.json();
-
-                if (data && data.length > 0) {
-                    const lyricsData = data.find((item: any) => item.syncedLyrics) || data[0];
-
-                    if (lyricsData.syncedLyrics) {
-                        const lines = lyricsData.syncedLyrics.split('\n');
-                        const parsedLyrics = lines.map((line: string) => {
-                            const match = line.match(/\[(\d+):(\d+\.\d+)\](.*)/);
-                            if (match) {
-                                const time = parseInt(match[1]) * 60 + parseFloat(match[2]);
-                                return { time, text: match[3].trim() };
-                            }
-                            return null;
-                        }).filter((l: any) => l !== null);
-                        setLyrics(parsedLyrics as { time: number; text: string }[]);
-                    } else if (lyricsData.plainLyrics) {
-                        const lines = lyricsData.plainLyrics.split('\n').filter((l: string) => l.trim());
-                        const parsedLyrics = lines.map((text: string, i: number) => ({
-                            time: (duration / lines.length) * i,
-                            text: text.trim()
-                        }));
-                        setLyrics(parsedLyrics);
-                    }
-                } else {
-                    setLyrics([{ time: 0, text: "No hemos encontrado la letra para esta canción." }]);
-                }
-            } catch (error) {
-                console.error('Error fetching lyrics:', error);
-                setLyrics([{ time: 0, text: "Error al cargar la letra." }]);
+                const data = await LyricsEngine.fetchLyrics(currentTrack.artist, currentTrack.title, duration);
+                setLyrics(data);
+            } catch (e) {
+                console.error('Lyrics fetch error', e);
             } finally {
                 setIsLoadingLyrics(false);
             }
         };
-        fetchLyrics();
-    }, [currentTrack?.id]);
+        fetch();
+    }, [currentTrack?.id, duration]);
 
-    const formatTime = (time: number) => {
-        const mins = Math.floor(time / 60);
-        const secs = Math.floor(time % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const activeLineIndex = lyrics.findIndex((line: { time: number; text: string }, i: number) => {
-        const nextLine = lyrics[i + 1];
-        return currentTime >= line.time && (!nextLine || currentTime < nextLine.time);
-    });
-
+    // Sync lyrics with playback
     useEffect(() => {
-        if (scrollRef.current && activeLineIndex !== -1) {
-            const activeElement = scrollRef.current.children[activeLineIndex] as HTMLElement;
-            if (activeElement) {
-                const containerHeight = scrollRef.current.offsetHeight;
-                const elementOffset = activeElement.offsetTop;
-                const elementHeight = activeElement.offsetHeight;
+        if (lyrics.length === 0) return;
+        let frameId: number;
+        let running = true;
 
-                scrollRef.current.scrollTo({
-                    top: elementOffset - containerHeight / 2 + elementHeight / 2,
-                    behavior: 'smooth'
-                });
+        const updateFrame = () => {
+            if (!running) return;
+            const time = usePlayerStore.getState().currentTime;
+            let newIdx = -1;
+            for (let i = 0; i < lyrics.length; i++) {
+                if (time >= lyrics[i].time && (!lyrics[i + 1] || time < lyrics[i + 1].time)) {
+                    newIdx = i; break;
+                }
             }
-        }
-    }, [activeLineIndex]);
+            setActiveIdx(prev => prev !== newIdx ? newIdx : prev);
+            if (newIdx !== -1 && scrollRef.current && linesRef.current[newIdx]) {
+                const el = linesRef.current[newIdx];
+                if (el) {
+                    const target = el.offsetTop - scrollRef.current.offsetHeight / 2 + el.offsetHeight / 2;
+                    const ds = target - scrollRef.current.scrollTop;
+                    if (Math.abs(ds) > 1) scrollRef.current.scrollTop += ds * 0.08;
+                }
+            }
+            frameId = requestAnimationFrame(updateFrame);
+        };
+        frameId = requestAnimationFrame(updateFrame);
+        return () => {
+            running = false;
+            cancelAnimationFrame(frameId);
+        };
+    }, [lyrics]);
 
     if (!currentTrack) return null;
 
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
     return (
         <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-black flex flex-col md:flex-row overflow-hidden shadow-2xl"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed inset-0 z-[350] flex overflow-hidden"
+            style={{
+                background: `radial-gradient(ellipse at 30% 20%, rgba(${artworkColor},0.4) 0%, transparent 70%), radial-gradient(ellipse at 80% 80%, rgba(${artworkColor},0.2) 0%, transparent 60%), rgb(6,6,10)`
+            }}
         >
-            {/* Immersive Background */}
-            <div className="absolute inset-0 z-0 bg-black">
-                {/* Vibrant Album Art Blur */}
-                <div
-                    className="absolute inset-0 bg-cover bg-center scale-110 blur-[140px] opacity-70 transition-all duration-1000"
-                    style={{ backgroundImage: `url(${currentTrack.artwork})` }}
-                />
-                {/* Dynamic Room Tint */}
-                <div
-                    className="absolute inset-0 opacity-50 mix-blend-overlay"
-                    style={{ background: `radial-gradient(circle at center, rgb(var(--color-primary-rgb)), transparent)` }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/90" />
-            </div>
+            {/* Blurred artwork as background glow */}
+            {currentTrack.artwork && (
+                <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                    <img
+                        src={currentTrack.artwork}
+                        className="absolute inset-0 w-full h-full object-cover opacity-10 blur-[120px] scale-150"
+                        alt=""
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-black/90" />
+                </div>
+            )}
 
-            {/* Back Button - Moved to Left */}
+            {/* === CLOSE BUTTON === */}
             <button
                 onClick={() => setIsLyricsOpen(false)}
-                className="absolute top-10 left-10 z-[210] p-4 rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all hover:scale-110 active:scale-95 group shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-md"
+                className="absolute top-8 left-8 z-40 w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
             >
-                <ChevronDown size={28} className="group-hover:-translate-y-1 transition-transform" />
+                <ChevronDown size={22} />
             </button>
 
-            {/* Left Side: Lyrics Display */}
-            <div className="flex-1 relative z-10 flex flex-col pt-32 pl-16 pr-8 md:pl-32 md:pr-12 overflow-hidden">
+            {/* === LEFT PANEL: LYRICS === */}
+            <div className="flex-1 relative z-10 flex flex-col overflow-hidden pt-24 pb-10">
                 <div
                     ref={scrollRef}
-                    className="flex-1 overflow-y-auto space-y-12 scrollbar-hide mask-gradient-v pb-[60vh]"
+                    className="flex-1 overflow-y-auto pb-[30vh] px-16 space-y-8"
+                    style={{
+                        maskImage: 'linear-gradient(to bottom, transparent 0%, black 12%, black 85%, transparent 100%)',
+                        scrollbarWidth: 'none'
+                    }}
                 >
                     {isLoadingLyrics ? (
-                        <div className="flex items-center gap-4 text-white/20 animate-pulse">
-                            <MessageSquare className="animate-bounce" />
-                            <p className="text-3xl font-bold italic">Sincronizando letras...</p>
+                        <div className="h-full flex flex-col items-center justify-center gap-4 pt-32">
+                            <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+                                className="w-6 h-6 border-2 border-white/10 border-t-white/60 rounded-full"
+                            />
+                            <p className="text-white/20 text-[10px] font-black tracking-[0.3em] uppercase">Cargando letras</p>
+                        </div>
+                    ) : lyrics.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-center opacity-20 pt-32 gap-4">
+                            <MessageSquare size={40} />
+                            <p className="text-2xl font-black italic tracking-tighter">Sin letras disponibles</p>
                         </div>
                     ) : (
-                        lyrics.map((line: { time: number; text: string }, i: number) => (
-                            <motion.p
-                                key={i}
-                                animate={{
-                                    opacity: activeLineIndex === i ? 1 : 0.15,
-                                    scale: activeLineIndex === i ? 1.05 : 1,
-                                    x: activeLineIndex === i ? 10 : 0,
-                                    filter: activeLineIndex === i ? 'blur(0px)' : 'blur(1px)'
-                                }}
-                                className={clsx(
-                                    "text-3xl md:text-5xl font-bold transition-all cursor-pointer hover:opacity-100 leading-tight tracking-tight max-w-[90%]",
-                                    activeLineIndex === i ? "text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)]" : "text-white/30"
-                                )}
-                                onClick={() => setSeekTo(line.time)}
-                            >
-                                {line.text}
-                            </motion.p>
-                        ))
+                        lyrics.map((line, i) => {
+                            const isActive = i === activeIdx;
+                            const isPast = i < activeIdx;
+                            return (
+                                <motion.p
+                                    key={i}
+                                    ref={el => linesRef.current[i] = el}
+                                    animate={{
+                                        opacity: isActive ? 1 : isPast ? 0.25 : 0.07,
+                                        scale: isActive ? 1.02 : 0.97,
+                                        filter: isActive ? 'blur(0px)' : 'blur(0.5px)',
+                                    }}
+                                    transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
+                                    onClick={() => setSeekTo(line.time)}
+                                    className="text-3xl md:text-5xl font-black leading-tight tracking-tighter cursor-pointer select-none text-white hover:opacity-80 transition-opacity"
+                                >
+                                    {line.text}
+                                </motion.p>
+                            );
+                        })
                     )}
                 </div>
             </div>
 
-            {/* Right Side: Professional Player Card */}
-            <div className="w-full md:w-[500px] relative z-20 bg-dark-950/20 backdrop-blur-[120px] border-l border-white/5 p-12 flex flex-col justify-center items-center shadow-[-50px_0_100px_rgba(0,0,0,0.8)]">
-                {/* Single Artwork Display */}
+            {/* === RIGHT PANEL: ARTWORK + CONTROLS === */}
+            <div className="w-[380px] md:w-[420px] relative z-20 flex flex-col items-center justify-center pb-10 px-8 gap-8 flex-shrink-0">
+                {/* Artwork - contained, no overflow */}
                 <motion.div
-                    layoutId="artwork"
-                    className="w-72 h-72 md:w-96 md:h-96 rounded-[50px] shadow-[0_45px_100px_rgba(0,0,0,0.8)] mb-12 overflow-hidden border border-white/20 group relative bg-black"
+                    className="relative w-full aspect-square rounded-3xl overflow-hidden"
+                    animate={isPlaying ? { boxShadow: `0 30px 80px rgba(${artworkColor},0.4), 0 0 0 1px rgba(255,255,255,0.05)` } : { boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)' }}
+                    transition={{ duration: 1 }}
+                    style={{ maxWidth: 320, margin: '0 auto' }}
                 >
-                    <img
-                        src={currentTrack.artwork}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out"
-                        alt={currentTrack.title}
-                    />
-                    
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-white/5 opacity-50 pointer-events-none" />
+                    {currentTrack.artwork ? (
+                        <img src={currentTrack.artwork} className="w-full h-full object-cover" alt="" />
+                    ) : (
+                        <div className="w-full h-full bg-white/5 flex items-center justify-center">
+                            <MessageSquare size={40} className="text-white/20" />
+                        </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
                 </motion.div>
 
-                {/* Centered Track Info */}
-                <div className="w-full text-center space-y-4 mb-12">
-                    <motion.h2
-                        className="text-4xl md:text-5xl font-black text-white px-4 tracking-tighter line-clamp-2"
-                    >
-                        {currentTrack.title}
-                    </motion.h2>
-                    <motion.p
-                        className="text-xl md:text-2xl text-white font-bold tracking-[0.3em] opacity-40 italic uppercase"
-                    >
-                        {currentTrack.artist}
-                    </motion.p>
+                {/* Track Info */}
+                <div className="w-full text-center space-y-1">
+                    <h2 className="text-2xl font-black text-white tracking-tight truncate">{currentTrack.title}</h2>
+                    <p className="text-sm text-white/40 font-bold uppercase tracking-widest truncate">{currentTrack.artist}</p>
                 </div>
 
-                {/* Progress Bar with Depth */}
-                <div className="w-full space-y-4 mb-12 px-2">
-                    <div className="h-2 w-full bg-white/5 rounded-full relative overflow-hidden shadow-inner">
+                {/* Progress bar */}
+                <div className="w-full space-y-2">
+                    <div
+                        className="relative h-1 w-full bg-white/10 rounded-full overflow-hidden cursor-pointer"
+                        onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const ratio = (e.clientX - rect.left) / rect.width;
+                            setSeekTo(ratio * duration);
+                        }}
+                    >
                         <motion.div
-                            className="absolute top-0 left-0 h-full bg-white shadow-[0_0_20px_rgba(255,255,255,0.4)]"
-                            animate={{ width: `${(currentTime / duration) * 100}%` }}
-                            transition={{ ease: "linear", duration: 0.1 }}
+                            className="absolute left-0 top-0 h-full bg-white rounded-full"
+                            animate={{ width: `${progress}%` }}
+                            transition={{ type: 'tween', duration: 0.1 }}
                         />
                     </div>
-                    <div className="flex justify-between text-xs font-mono font-bold text-white/30 tracking-widest">
+                    <div className="flex justify-between text-[10px] font-black text-white/20 tracking-widest">
                         <span>{formatTime(currentTime)}</span>
                         <span>{formatTime(duration)}</span>
                     </div>
                 </div>
 
-                {/* High Fidelity Controls */}
-                <div className="flex items-center gap-10 mb-14">
+                {/* Playback Controls */}
+                <div className="flex items-center justify-between w-full px-4">
                     <button
-                        onClick={playPrevious}
-                        className="text-white/60 hover:text-white transition-all hover:scale-125 active:scale-90 p-2"
+                        onClick={() => toggleFavorite()}
+                        className={`p-3 rounded-full transition-all ${currentTrack.favorite ? 'text-red-400' : 'text-white/20 hover:text-white'}`}
                     >
-                        <SkipBack size={38} fill="currentColor" />
+                        <Heart size={22} className={currentTrack.favorite ? 'fill-current' : ''} />
                     </button>
 
-                    <button
+                    <button onClick={playPrevious} className="p-3 text-white/40 hover:text-white transition-all hover:scale-110 active:scale-90">
+                        <SkipBack size={26} fill="currentColor" />
+                    </button>
+
+                    <motion.button
+                        whileHover={{ scale: 1.06 }}
+                        whileTap={{ scale: 0.94 }}
                         onClick={() => setIsPlaying(!isPlaying)}
-                        className="w-24 h-24 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_20px_60px_rgba(255,255,255,0.3)] border-4 border-white/10 group overflow-hidden"
+                        className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-[0_10px_40px_rgba(255,255,255,0.2)]"
                     >
-                        {isPlaying ? (
-                            <Pause size={40} fill="currentColor" strokeWidth={0} />
-                        ) : (
-                            <Play size={40} fill="currentColor" strokeWidth={0} className="ml-1" />
-                        )}
+                        {isPlaying ? <Pause size={28} fill="currentColor" strokeWidth={0} /> : <Play size={28} fill="currentColor" strokeWidth={0} className="ml-1" />}
+                    </motion.button>
+
+                    <button onClick={playNext} className="p-3 text-white/40 hover:text-white transition-all hover:scale-110 active:scale-90">
+                        <SkipForward size={26} fill="currentColor" />
                     </button>
 
-                    <button
-                        onClick={playNext}
-                        className="text-white/60 hover:text-white transition-all hover:scale-125 active:scale-90 p-2"
-                    >
-                        <SkipForward size={38} fill="currentColor" />
-                    </button>
-                </div>
-
-                {/* Extra Actions */}
-                <div className="flex items-center gap-8 w-full px-4">
-                    <button className="p-4 rounded-2xl bg-white/5 border border-white/5 text-white/20 hover:text-red-500 hover:bg-red-500/10 transition-all shadow-xl">
-                        <Heart size={24} />
-                    </button>
-
-                    <div className="flex-1 flex items-center gap-4 px-6 py-4 rounded-3xl bg-white/5 border border-white/5">
-                        <Volume2 size={20} className="text-white/20" />
-                        <div className="h-1.5 flex-1 bg-black/40 rounded-full overflow-hidden">
-                            <motion.div
-                                className="h-full bg-white/40"
-                                animate={{ width: `${volume * 100}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    <button className="p-4 rounded-2xl bg-white/5 border border-white/5 text-white/20 hover:text-white transition-all shadow-xl">
-                        <MoreHorizontal size={24} />
-                    </button>
+                    <div className="w-10" /> {/* Spacer to balance heart */}
                 </div>
             </div>
         </motion.div>

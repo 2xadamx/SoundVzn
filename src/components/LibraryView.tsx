@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Music, Heart, Clock, Play, Search, ListPlus, Download, CheckCircle2, Crown } from 'lucide-react';
+import { Music, Heart, Clock, Play, Search, ListPlus, Download, CheckCircle2, LayoutGrid, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlaylistSelector } from './playlists/PlaylistSelector';
+import { MetadataEditor } from './player/MetadataEditor';
 import { getAllTracks, getFavorites, getProfile } from '@utils/database';
 import { usePlayerStore } from '@store/player';
 import { Track } from '../types';
@@ -11,18 +12,23 @@ const STANDARD_LIMIT = 300;
 
 type Filter = 'favorites' | 'downloads' | 'recent' | 'all';
 
-export const LibraryView = () => {
+interface LibraryViewProps {
+    onNavigate?: (view: string, params?: any) => void;
+}
+
+export const LibraryView: React.FC<LibraryViewProps> = () => {
     const [tracks, setTracks] = useState<any[]>([]);
     const [filter, setFilter] = useState<Filter>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTrackForPlaylist, setSelectedTrackForPlaylist] = useState<Track | null>(null);
+    const [selectedTrackForEdit, setSelectedTrackForEdit] = useState<Track | null>(null);
     const [userTier, setUserTier] = useState<'standard' | 'pro'>('standard');
     const [totalCount, setTotalCount] = useState(0);
 
     const listRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(400);
-    const ROW_HEIGHT = 88;
+    const ROW_HEIGHT = 72;
     const OVERSCAN = 6;
 
     const loadTracks = useCallback(async () => {
@@ -50,7 +56,6 @@ export const LibraryView = () => {
         }
 
         setTotalCount(data.length);
-        // Aplicar límite de visualización para Standard
         if (userTier === 'standard' && (filter === 'favorites' || filter === 'downloads')) {
             data = data.slice(0, STANDARD_LIMIT);
         }
@@ -113,7 +118,7 @@ export const LibraryView = () => {
             format: t.format || 'Hi-Res',
             artwork: t.artwork,
             favorite: t.favorite || false,
-            dateAdded: t.dateAdded || new Date().toISOString(),
+            addedDate: t.addedDate || new Date().toISOString(),
             playCount: t.playCount || 0,
         }));
         usePlayerStore.getState().playUnifiedCollection(queue, index, {
@@ -123,9 +128,7 @@ export const LibraryView = () => {
         });
     };
 
-    // ─── Empty state con CTA Pro ───────────────────────────────────────────
     const renderEmpty = () => {
-        const isAtLimit = userTier === 'standard' && totalCount >= STANDARD_LIMIT;
         const msgs: Record<Filter, { title: string; sub: string }> = {
             favorites: { title: 'Aún sin favoritos', sub: 'Dale ♥ a canciones para guardarlas aquí' },
             downloads: { title: 'Sin descargas', sub: 'Descarga canciones para escucharlas sin datos' },
@@ -147,172 +150,147 @@ export const LibraryView = () => {
                     <p className="text-lg font-bold text-white/30 tracking-tight">{msg.title}</p>
                     <p className="text-sm text-white/20 mt-1">{msg.sub}</p>
                 </div>
-                {isAtLimit && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-5 py-3"
-                    >
-                        <Crown size={16} className="text-amber-400" />
-                        <div className="text-left">
-                            <p className="text-xs font-bold text-amber-300">Límite Standard alcanzado ({STANDARD_LIMIT})</p>
-                            <p className="text-[10px] text-amber-400/60 mt-0.5">Mejora a Pro para guardar sin límites</p>
-                        </div>
-                        <button className="ml-2 px-4 py-2 bg-amber-400 text-black text-[10px] font-bold rounded-xl hover:bg-white transition-colors">
-                            Mejorar
-                        </button>
-                    </motion.div>
-                )}
             </motion.div>
         );
     };
 
-    // ─── Limit bar para standard ───────────────────────────────────────────
-    const showLimitBar = userTier === 'standard' && (filter === 'favorites' || filter === 'downloads') && totalCount > 0;
-    const limitPct = Math.min((totalCount / STANDARD_LIMIT) * 100, 100);
-
     return (
-        <div className="space-y-8 animate-in fade-in duration-500 pb-24 px-2">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div>
-                    <h1 className="text-4xl font-bold text-white tracking-tight mb-1">Tu Música</h1>
-                    <p className="text-white/30 text-xs tracking-[0.25em] uppercase">
-                        {filter === 'favorites' ? 'Tus canciones favoritas' :
-                            filter === 'recent' ? 'Escuchado recientemente' :
-                                filter === 'downloads' ? 'Disponible sin conexión' :
-                                    'Tu colección completa'}
-                    </p>
-                </div>
+        <div className="space-y-12 animate-in fade-in duration-700 pb-24 px-4 overflow-x-hidden">
 
-                <div className="relative group min-w-[280px]">
-                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-white/50 transition-colors" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        placeholder="Buscar en esta sección..."
-                        className="bg-white/[0.03] border border-white/[0.06] rounded-2xl py-3.5 pl-11 pr-5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-white/15 w-full transition-all"
-                    />
-                </div>
-            </div>
+            {/* TRACK LIST SECTION */}
+            <section className="space-y-8">
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.35em] border border-white/10 px-2 py-0.5 rounded-full">Biblioteca</span>
+                        </div>
+                        <h2 className="text-xl font-bold tracking-tight mb-1">
+                            Tu Música
+                        </h2>
+                        <p className="text-[11px] text-white/30 font-medium tracking-wide">
+                            {filter === 'all' ? 'Colección completa' : filter === 'favorites' ? 'Tus favoritos' : filter === 'downloads' ? 'Descargas offline' : 'Historial reciente'}
+                            {' · '}
+                            <span className="font-semibold text-white/60">{totalCount}</span> pistas
+                        </p>
+                    </div>
 
-            {/* Filters */}
-            <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                {[
-                    { key: 'favorites' as Filter, label: 'Favoritos', icon: Heart },
-                    { key: 'recent' as Filter, label: 'Recientes', icon: Clock },
-                    { key: 'downloads' as Filter, label: 'Descargas', icon: Download },
-                    { key: 'all' as Filter, label: 'Todo', icon: Music },
-                ].map((f) => (
-                    <button
-                        key={f.key}
-                        onClick={() => setFilter(f.key)}
-                        className={clsx(
-                            "flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-bold transition-all border whitespace-nowrap",
-                            filter === f.key
-                                ? 'bg-white text-black border-white shadow-lg'
-                                : 'bg-white/[0.03] text-white/40 border-white/[0.06] hover:text-white/70 hover:bg-white/[0.06]'
-                        )}
-                    >
-                        <f.icon size={13} />
-                        {f.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Limit progress bar */}
-            {showLimitBar && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-3">
-                    <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
-                        <div
-                            className={clsx("h-full rounded-full transition-all duration-700", limitPct >= 90 ? "bg-amber-400" : "bg-white/30")}
-                            style={{ width: `${limitPct}%` }}
+                    <div className="relative group min-w-[280px]">
+                        <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder="Buscar en colección..."
+                            className="bg-white/[0.03] border border-white/[0.06] rounded-2xl py-3 pl-11 pr-5 text-[13px] text-white placeholder:text-white/10 focus:outline-none focus:border-white/15 w-full transition-all"
                         />
                     </div>
-                    <span className="text-[10px] font-bold text-white/25 whitespace-nowrap">
-                        {totalCount} / {STANDARD_LIMIT}
-                        {limitPct >= 90 && <span className="text-amber-400 ml-1.5">• Casi lleno</span>}
-                    </span>
-                </motion.div>
-            )}
-
-            {/* Track List */}
-            {filteredTracks.length === 0 ? renderEmpty() : (
-                <div
-                    ref={listRef}
-                    className="max-h-[60vh] overflow-auto"
-                    onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-                >
-                    <div style={{ height: offsetY }} />
-                    {visibleTracks.map(({ track, index }) => (
-                        <motion.div
-                            key={`${track.id}-${index}`}
-                            initial={{ opacity: 0, x: -12 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ duration: 0.2 }}
-                            onClick={() => handlePlayTrack(track, index)}
-                            className="flex items-center gap-5 p-4 rounded-2xl border border-transparent hover:border-white/[0.06] hover:bg-white/[0.03] cursor-pointer group transition-all duration-300 relative"
-                        >
-                            <div className="absolute left-0 top-1/4 bottom-1/4 w-0.5 bg-white/30 scale-y-0 group-hover:scale-y-100 transition-transform duration-300 rounded-r-full" />
-
-                            <span className="text-white/15 text-xs w-6 text-center font-bold group-hover:text-white/40 transition-colors flex-shrink-0">{index + 1}</span>
-
-                            <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/5 flex-shrink-0 relative border border-white/5 shadow-lg">
-                                {track.artwork ? (
-                                    <img src={track.artwork} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center"><Music size={20} className="text-white/15" /></div>
-                                )}
-                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Play size={20} className="text-white fill-current" />
-                                </div>
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-white truncate group-hover:text-white transition-colors">{track.title}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                    <p className="text-xs text-white/30 truncate">{track.artist}</p>
-                                    {track.filePath && !track.filePath.startsWith('http') && (
-                                        <div className="flex items-center gap-1 text-emerald-400/60 flex-shrink-0">
-                                            <CheckCircle2 size={9} />
-                                            <span className="text-[8px] font-bold uppercase tracking-wider">Offline</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedTrackForPlaylist(track as any);
-                                    }}
-                                    className="w-9 h-9 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 transition-all"
-                                >
-                                    <ListPlus size={16} />
-                                </button>
-                            </div>
-
-                            {track.favorite && (
-                                <Heart size={14} className="text-red-400 fill-current flex-shrink-0" />
-                            )}
-
-                            <div className="hidden md:block w-14 text-right flex-shrink-0">
-                                <span className="text-[10px] font-mono text-white/15 group-hover:text-white/30 transition-colors">
-                                    {track.playCount || 0}×
-                                </span>
-                            </div>
-                        </motion.div>
-                    ))}
-                    <div style={{ height: bottomPad }} />
                 </div>
-            )}
+
+                <div className="flex items-center flex-wrap gap-2 pb-2">
+                    {[
+                        { key: 'favorites' as Filter, label: 'Favoritos', icon: Heart },
+                        { key: 'recent' as Filter, label: 'Recientes', icon: Clock },
+                        { key: 'downloads' as Filter, label: 'Descargas', icon: Download },
+                        { key: 'all' as Filter, label: 'Todo', icon: LayoutGrid },
+                    ].map((f) => (
+                        <button
+                            key={f.key}
+                            onClick={() => setFilter(f.key)}
+                            className={clsx(
+                                "flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-bold transition-all border whitespace-nowrap",
+                                filter === f.key
+                                    ? 'bg-white text-black border-white shadow-lg'
+                                    : 'bg-white/[0.02] text-white/40 border-white/[0.06] hover:text-white/70 hover:bg-white/[0.04]'
+                            )}
+                        >
+                            <f.icon size={12} />
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Sin límites de tier */}
+
+                {filteredTracks.length === 0 ? renderEmpty() : (
+                    <div
+                        ref={listRef}
+                        className="max-h-[60vh] overflow-x-hidden overflow-y-auto hide-scrollbar"
+                        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+                    >
+                        <div style={{ height: offsetY }} />
+                        {visibleTracks.map(({ track, index }) => (
+                            <motion.div
+                                key={`${track.id}-${index}`}
+                                onClick={() => handlePlayTrack(track, index)}
+                                className="flex items-center gap-5 h-[72px] px-5 rounded-2xl border border-transparent hover:border-white/[0.04] hover:bg-white/[0.02] cursor-pointer group transition-all relative"
+                            >
+                                <div className="absolute left-0 top-1/4 bottom-1/4 w-0.5 bg-white/30 scale-y-0 group-hover:scale-y-100 transition-transform duration-300 rounded-r-full" />
+                                <span className="text-white/10 text-[11px] w-6 text-center font-bold group-hover:text-white/30 transition-colors flex-shrink-0">{index + 1}</span>
+
+                                <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 flex-shrink-0 relative border border-white/5 shadow-2xl">
+                                    {track.artwork ? (
+                                        <img src={track.artwork} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center"><Music size={18} className="text-white/10" /></div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Play size={18} className="text-white fill-current" />
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[14px] font-bold text-white truncate group-hover:text-primary-400 transition-colors uppercase tracking-tight">{track.title}</p>
+                                    <div className="flex items-center gap-3 mt-0.5">
+                                        <p className="text-[12px] text-white/30 truncate font-medium">{track.artist}</p>
+                                        {track.filePath && !track.filePath.startsWith('http') && (
+                                            <div className="flex items-center gap-1 text-primary-400/50 flex-shrink-0">
+                                                <CheckCircle2 size={8} />
+                                                <span className="text-[7px] font-black uppercase tracking-widest">Local</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {track.filePath && !track.filePath.startsWith('http') && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setSelectedTrackForEdit(track as any); }}
+                                            className="w-10 h-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 transition-all"
+                                        >
+                                            <Edit2 size={16} />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setSelectedTrackForPlaylist(track as any); }}
+                                        className="w-10 h-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 transition-all"
+                                    >
+                                        <ListPlus size={16} />
+                                    </button>
+                                </div>
+
+                                {track.favorite && <Heart size={14} className="text-red-500 fill-current flex-shrink-0 drop-shadow-[0_0_8px_rgba(239,68,68,0.4)]" />}
+
+                                <div className="hidden md:block w-14 text-right flex-shrink-0">
+                                    <span className="text-[10px] font-mono text-white/10 group-hover:text-white/30 transition-colors">
+                                        {track.playCount || 0}×
+                                    </span>
+                                </div>
+                            </motion.div>
+                        ))}
+                        <div style={{ height: bottomPad }} />
+                    </div>
+                )}
+            </section>
+
+
 
             <AnimatePresence>
-                {selectedTrackForPlaylist && (
-                    <PlaylistSelector
-                        track={selectedTrackForPlaylist}
-                        onClose={() => setSelectedTrackForPlaylist(null)}
+                {selectedTrackForPlaylist && <PlaylistSelector track={selectedTrackForPlaylist} onClose={() => setSelectedTrackForPlaylist(null)} />}
+                {selectedTrackForEdit && (
+                    <MetadataEditor
+                        track={selectedTrackForEdit}
+                        onClose={() => setSelectedTrackForEdit(null)}
+                        onUpdate={loadTracks}
                     />
                 )}
             </AnimatePresence>

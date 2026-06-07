@@ -1,42 +1,49 @@
+import dotenv from 'dotenv';
+
+// Carga las variables de entorno desde el archivo .env
+dotenv.config();
+
 /**
- * secrets.ts — Compiled secrets for production Electron builds.
- *
- * HOW IT WORKS (SECURITY MODEL):
- * These values are replaced at build time by Vite's `define` mechanism.
- * They are NOT read from a `.env` file at runtime — no plaintext secrets
- * ship with the app distribution. Values are burned into dist-electron/backend.js
- * as string literals during `npm run build`.
- *
- * In development, process.env is used as fallback so dotenv still works normally.
- *
- * DO NOT export this file from any frontend (renderer) entry point.
- * It is imported only by backend Electron files (main.ts, backendApi.ts, mailer.ts, authController.ts).
+ * secrets.ts — Loaded dynamically via dotenv at runtime.
+ * 
+ * We no longer use Vite's `define` to burn secrets into the build,
+ * as that causes security vulnerabilities (shipping secrets to clients).
+ * This file is ONLY used by the Electron backend process.
  */
 
 // ——— SMTP (Email) ———
-export const SMTP_HOST: string = (typeof __SMTP_HOST__ !== 'undefined' ? __SMTP_HOST__ : process.env.SMTP_HOST) || 'smtp.gmail.com';
-export const SMTP_PORT_STR: string = (typeof __SMTP_PORT__ !== 'undefined' ? __SMTP_PORT__ : process.env.SMTP_PORT) || '587';
-export const SMTP_PORT: number = parseInt(SMTP_PORT_STR, 10);
-export const SMTP_SECURE: boolean = (typeof __SMTP_SECURE__ !== 'undefined' ? __SMTP_SECURE__ : (process.env.SMTP_SECURE || 'false')) === 'true' || SMTP_PORT === 465;
-export const SMTP_USER: string = (typeof __SMTP_USER__ !== 'undefined' ? __SMTP_USER__ : process.env.SMTP_USER) || '';
-export const SMTP_PASS: string = (typeof __SMTP_PASS__ !== 'undefined' ? __SMTP_PASS__ : process.env.SMTP_PASS) || '';
-export const SMTP_FROM: string = (typeof __SMTP_FROM__ !== 'undefined' ? __SMTP_FROM__ : process.env.SMTP_FROM) || SMTP_USER;
+export const SMTP_HOST: string = process.env.SMTP_HOST || 'smtp.gmail.com';
+export const SMTP_PORT_STR: string = process.env.SMTP_PORT || '587';
+export const SMTP_PORT: number = parseInt(SMTP_PORT_STR, 10) || 587;
+export const SMTP_SECURE: boolean = (process.env.SMTP_SECURE || 'false') === 'true' || SMTP_PORT === 465;
+export const SMTP_USER: string = process.env.SMTP_USER || '';
+export const SMTP_PASS: string = process.env.SMTP_PASS || '';
+export const SMTP_FROM: string = process.env.SMTP_FROM || SMTP_USER;
 
 // ——— Authentication ———
-export const JWT_SECRET: string = (typeof __JWT_SECRET__ !== 'undefined' ? __JWT_SECRET__ : process.env.JWT_SECRET) || 'soundvzn_fallback_dev_secret_2026';
+export const JWT_SECRET: string = process.env.JWT_SECRET || '';
 
 // ——— Spotify ———
-export const SPOTIFY_CLIENT_ID: string = (typeof __SPOTIFY_CLIENT_ID__ !== 'undefined' ? __SPOTIFY_CLIENT_ID__ : process.env.SPOTIFY_CLIENT_ID) || '';
-export const SPOTIFY_CLIENT_SECRET: string = (typeof __SPOTIFY_CLIENT_SECRET__ !== 'undefined' ? __SPOTIFY_CLIENT_SECRET__ : process.env.SPOTIFY_CLIENT_SECRET) || '';
+export const SPOTIFY_CLIENT_ID: string = process.env.SPOTIFY_CLIENT_ID || '';
+export const SPOTIFY_CLIENT_SECRET: string = process.env.SPOTIFY_CLIENT_SECRET || '';
 
 // ——— Last.fm ———
-export const LASTFM_API_KEY: string = (typeof __LASTFM_API_KEY__ !== 'undefined' ? __LASTFM_API_KEY__ : (process.env.LASTFM_API_KEY || process.env.VITE_LASTFM_API_KEY)) || '';
+export const LASTFM_API_KEY: string = process.env.LASTFM_API_KEY || '';
 
 // ——— Google OAuth ———
-export const GOOGLE_CLIENT_SECRET: string = (typeof __GOOGLE_CLIENT_SECRET__ !== 'undefined' ? __GOOGLE_CLIENT_SECRET__ : process.env.GOOGLE_CLIENT_SECRET) || '';
+export const GOOGLE_CLIENT_ID: string = process.env.VITE_GOOGLE_CLIENT_ID || '';
+export const GOOGLE_CLIENT_SECRET: string = process.env.GOOGLE_CLIENT_SECRET || '';
+
+// ——— Microsoft OAuth ———
+export const MICROSOFT_CLIENT_ID: string = process.env.VITE_MICROSOFT_CLIENT_ID || '';
+export const MICROSOFT_CLIENT_SECRET: string = process.env.MICROSOFT_CLIENT_SECRET || '';
+
+// ——— Discord OAuth ———
+export const DISCORD_CLIENT_ID: string = process.env.DISCORD_CLIENT_ID || '1484558840715284593';
+export const DISCORD_PUBLIC_KEY: string = process.env.DISCORD_PUBLIC_KEY || '6790c534ec1f2ffa4238bd658c38b51319f38bd0fd052862ebe7752e4ef61124';
 
 // ——— Stripe ———
-export const STRIPE_SECRET_KEY: string = (typeof __STRIPE_SECRET_KEY__ !== 'undefined' ? __STRIPE_SECRET_KEY__ : process.env.STRIPE_SECRET_KEY) || '';
-export const STRIPE_PUBLISHABLE_KEY: string = (typeof __STRIPE_PUBLISHABLE_KEY__ !== 'undefined' ? __STRIPE_PUBLISHABLE_KEY__ : process.env.STRIPE_PUBLISHABLE_KEY) || '';
-export const STRIPE_PRICE_ID_PRO: string = (typeof __STRIPE_PRICE_ID_PRO__ !== 'undefined' ? __STRIPE_PRICE_ID_PRO__ : process.env.STRIPE_PRICE_ID_PRO) || '';
-export const STRIPE_WEBHOOK_SECRET: string = (typeof __STRIPE_WEBHOOK_SECRET__ !== 'undefined' ? __STRIPE_WEBHOOK_SECRET__ : process.env.STRIPE_WEBHOOK_SECRET) || '';
+export const STRIPE_SECRET_KEY: string = process.env.STRIPE_SECRET_KEY || '';
+export const STRIPE_PUBLISHABLE_KEY: string = process.env.STRIPE_PUBLISHABLE_KEY || '';
+export const STRIPE_PRICE_ID_PRO: string = process.env.STRIPE_PRICE_ID_PRO || '';
+export const STRIPE_WEBHOOK_SECRET: string = process.env.STRIPE_WEBHOOK_SECRET || '';

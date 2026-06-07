@@ -1,12 +1,15 @@
 import React from 'react';
 import clsx from 'clsx';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../store/player';
-import { addTrack } from '../../utils/database';
-import { Visualizer } from './Visualizer';
-import { Mic2, ListMusic, Heart, Download, Loader2, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, VolumeX } from 'lucide-react';
+import { getAllPlaylists, addTrackToPlaylist } from '../../utils/database';
+import {
+    Mic2, ListMusic, Heart,
+    Play, Pause, SkipBack, SkipForward, Repeat,
+    Shuffle, Volume2, VolumeX, Plus
+} from 'lucide-react';
 import { notificationService } from '@services/notificationService';
-import { shallow } from 'zustand/shallow';
+import { normalizeArtistName } from '../../utils/formatters';
 
 const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds)) return '0:00';
@@ -15,344 +18,275 @@ const formatTime = (seconds: number) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-const TechBadge: React.FC<{ label: string; active?: boolean }> = ({ label, active }) => (
-    <span className={clsx(
-        "text-[8px] font-bold px-1.5 py-0.5 rounded bg-white/5 border border-white/10 tracking-widest transition-all duration-500",
-        active && "text-primary-400 border-primary-500/30 bg-primary-500/10"
-    )}>
-        {label}
-    </span>
-);
-
 export const PlayerBar: React.FC<{ onNavigate?: (view: string, params?: any) => void }> = ({ onNavigate }) => {
-    const {
-        currentTrack,
-        isPlaying,
-        currentTime,
-        duration,
-        volume,
-        muted,
-        setIsPlaying,
-        playNext,
-        playPrevious,
-        setVolume,
-        toggleMute,
-        toggleShuffle,
-        toggleRepeat,
-        shuffle,
-        repeat,
-        setSeekTo,
-        setIsLyricsOpen,
-        isLyricsOpen,
-        toggleFavorite,
-        isResolving
-    } = usePlayerStore(
-        (state) => ({
-            currentTrack: state.currentTrack,
-            isPlaying: state.isPlaying,
-            currentTime: state.currentTime,
-            duration: state.duration,
-            volume: state.volume,
-            muted: state.muted,
-            setIsPlaying: state.setIsPlaying,
-            playNext: state.playNext,
-            playPrevious: state.playPrevious,
-            setVolume: state.setVolume,
-            toggleMute: state.toggleMute,
-            toggleShuffle: state.toggleShuffle,
-            toggleRepeat: state.toggleRepeat,
-            shuffle: state.shuffle,
-            repeat: state.repeat,
-            setSeekTo: state.setSeekTo,
-            setIsLyricsOpen: state.setIsLyricsOpen,
-            isLyricsOpen: state.isLyricsOpen,
-            toggleFavorite: state.toggleFavorite,
-            isResolving: state.isResolving,
-        }),
-        shallow
-    );
+    const currentTrack  = usePlayerStore(s => s.currentTrack);
+    const isPlaying     = usePlayerStore(s => s.isPlaying);
+    const currentTime   = usePlayerStore(s => s.currentTime);
+    const duration      = usePlayerStore(s => s.duration);
+    const volume        = usePlayerStore(s => s.volume);
+    const muted         = usePlayerStore(s => s.muted);
+    const shuffle       = usePlayerStore(s => s.shuffle);
+    const repeat        = usePlayerStore(s => s.repeat);
+    const isResolving   = usePlayerStore(s => s.isResolving);
+    const isLyricsOpen  = usePlayerStore(s => s.isLyricsOpen);
+    const isQueueOpen   = usePlayerStore(s => s.isQueueOpen);
 
-    const [downloadState, setDownloadState] = React.useState<'idle' | 'downloading' | 'done'>('idle');
-    const [isHoveringProgress, setIsHoveringProgress] = React.useState(false);
-    const [isHoveringVolume, setIsHoveringVolume] = React.useState(false);
+    const setIsPlaying    = usePlayerStore(s => s.setIsPlaying);
+    const playNext        = usePlayerStore(s => s.playNext);
+    const playPrevious    = usePlayerStore(s => s.playPrevious);
+    const setVolume       = usePlayerStore(s => s.setVolume);
+    const toggleMute      = usePlayerStore(s => s.toggleMute);
+    const toggleShuffle   = usePlayerStore(s => s.toggleShuffle);
+    const toggleRepeat    = usePlayerStore(s => s.toggleRepeat);
+    const setSeekTo       = usePlayerStore(s => s.setSeekTo);
+    const setIsLyricsOpen = usePlayerStore(s => s.setIsLyricsOpen);
+    const setIsQueueOpen  = usePlayerStore(s => s.setIsQueueOpen);
+    const toggleFavorite  = usePlayerStore(s => s.toggleFavorite);
+    const setIsGlassOpen  = usePlayerStore(s => s.setIsGlassOpen);
+
+    const [isAddMenuOpen, setIsAddMenuOpen] = React.useState(false);
+    const [myPlaylists, setMyPlaylists]     = React.useState<any[]>([]);
+    const [localProgress, setLocalProgress] = React.useState<number | null>(null);
+    const [isSeeking, setIsSeeking]         = React.useState(false);
 
     React.useEffect(() => {
-        const checkDownloaded = async () => {
-            if (!currentTrack?.id) {
-                setDownloadState('idle');
-                return;
-            }
-            if (currentTrack.format === 'LOCAL' || currentTrack.filePath?.includes('downloads')) {
-                setDownloadState('done');
-                return;
-            }
-            // Fallback: check database
-            const { getAllTracks } = await import('../../utils/database');
-            const allTracks = await getAllTracks();
-            const isLocal = allTracks.find(t => t.id === currentTrack.id && t.format === 'LOCAL');
-            setDownloadState(isLocal ? 'done' : 'idle');
-        };
-        checkDownloaded();
-    }, [currentTrack?.id]);
-
-    const handleDownload = async () => {
-        if (!currentTrack || downloadState !== 'idle') return;
-        if (!window.electron?.downloadTrack) return;
-
-        const trackLabel = currentTrack.title || currentTrack.artist || 'track';
-        notificationService.downloadStarted(trackLabel);
-
-        // Unlimited downloads for all users
-
-        setDownloadState('downloading');
-        try {
-            window.electron.onDownloadProgress?.((_data: any) => {
-                // Progress tracking disabled for now to simplify
-            });
-            const result = await (window.electron as any).downloadTrack(
-                currentTrack.id,
-                currentTrack.title,
-                currentTrack.artist
-            );
-            if (result?.success) {
-                // Persist to database so it shows in DownloadsView
-                await addTrack({
-                    ...currentTrack,
-                    filePath: result.filePath,
-                    format: 'LOCAL',
-                    dateAdded: Date.now()
-                });
-                setDownloadState('done');
-                notificationService.downloadCompleted(trackLabel);
-            }
-            else setDownloadState('idle');
-        } catch (err: any) {
-            console.error('Download error:', err);
-            alert(`Error al descargar: ${err.message || 'Error desconocido'}`);
-            setDownloadState('idle');
-            notificationService.downloadFailed(trackLabel);
-        }
-    };
-
-    const [localProgress, setLocalProgress] = React.useState<number | null>(null);
-    const [isSeeking, setIsSeeking] = React.useState(false);
+        if (isAddMenuOpen) getAllPlaylists().then(setMyPlaylists);
+    }, [isAddMenuOpen]);
 
     const progress = isSeeking && localProgress !== null
         ? localProgress
         : (duration > 0 ? (currentTime / duration) * 100 : 0);
 
-    const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) =>
         setLocalProgress(parseFloat(e.target.value));
-    };
 
     const commitSeek = (val: number) => {
-        const newTime = (val / 100) * duration;
-        setSeekTo(newTime);
+        setSeekTo((val / 100) * duration);
         setIsSeeking(false);
         setLocalProgress(null);
+    };
+
+    const handleAddToPlaylist = async (playlistId: string) => {
+        if (!currentTrack) return;
+        try {
+            await addTrackToPlaylist(playlistId, currentTrack.id);
+            setIsAddMenuOpen(false);
+            notificationService.success('Añadido');
+        } catch {
+            notificationService.error('Error al añadir');
+        }
     };
 
     if (!currentTrack) return null;
 
     return (
-        <motion.div
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            className="h-24 bg-dark-950/80 backdrop-blur-[50px] border-t border-white/5 fixed bottom-0 left-0 right-0 z-50 flex items-center px-10 gap-12 no-drag overflow-hidden"
-        >
-            {/* Resolution Progress Bar */}
-            {isResolving && (
-                <motion.div
-                    initial={{ x: "-100%" }}
-                    animate={{ x: "100%" }}
-                    transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                    className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-transparent via-primary-500 to-transparent z-50 pointer-events-none"
-                />
-            )}
-            {/* Left: Track Info */}
-            <div className="flex items-center gap-5 w-1/4 min-w-[280px] z-10">
-                <motion.div
-                    whileHover={{ scale: 1.02 }}
-                    animate={isResolving ? {
-                        scale: [1, 1.05, 1],
-                        opacity: [1, 0.8, 1]
-                    } : {}}
-                    transition={isResolving ? { repeat: Infinity, duration: 1.5 } : {}}
-                    onClick={() => onNavigate?.('glass-center')}
-                    className="w-14 h-14 rounded-xl bg-white/5 border border-white/10 overflow-hidden relative group cursor-pointer shadow-lg"
-                >
-                    {/* Audio Priority Optimization */}
-                    {currentTrack.artwork && !isResolving ? (
-                        <img
-                            src={currentTrack.artwork}
-                            alt={currentTrack.title}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                        />
-                    ) : (
-                        <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                            <Mic2 size={20} className={clsx("text-white/20", isResolving && "animate-pulse text-primary-400")} />
-                        </div>
-                    )}
-                </motion.div>
-
-                <div className="flex flex-col min-w-0 flex-1">
-                    <h4 className="font-bold text-white text-[15px] truncate leading-tight tracking-tight">
-                        {currentTrack.title}
-                    </h4>
-                    <p className="text-xs font-medium text-text-tertiary truncate mt-0.5">
-                        {currentTrack.artist}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1.5 opacity-60">
-                        {isResolving ? (
-                            <TechBadge label="Resolviendo..." active />
-                        ) : (
-                            <>
-                                <TechBadge label="Hi-Res" active />
-                                <Visualizer className="h-2.5 w-12" />
-                            </>
-                        )}
-                    </div>
+        <div className="fixed bottom-0 left-0 right-0 z-[100] select-none">
+            {/* ── MOBILE PLAYER (sm and below) ── */}
+            <div className="sm:hidden bg-black/90 backdrop-blur-3xl border-t border-white/[0.06] shadow-[0_-8px_30px_rgba(0,0,0,0.6)]">
+                {/* Progress bar */}
+                <div className="relative h-[3px] bg-white/10 group/prog cursor-pointer">
+                    <div className="h-full bg-white/80 transition-all" style={{ width: `${progress}%` }} />
+                    <input type="range" min="0" max="100" step="0.1"
+                        value={progress || 0}
+                        onTouchStart={() => setIsSeeking(true)}
+                        onMouseDown={() => setIsSeeking(true)}
+                        onChange={handleSeekChange}
+                        onMouseUp={e => commitSeek(parseFloat(e.currentTarget.value))}
+                        onTouchEnd={e => commitSeek(parseFloat(e.currentTarget.value))}
+                        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
+                        style={{ height: '16px', top: '-6px' }}
+                    />
                 </div>
 
-                <div className="flex items-center gap-0.5">
-                    <button
-                        onClick={() => toggleFavorite()}
-                        className={clsx("p-2 transition-colors", currentTrack.favorite ? "text-primary-500" : "text-white/20 hover:text-white")}
-                    >
-                        <Heart size={18} className={currentTrack.favorite ? "fill-current" : ""} />
+                <div className="flex items-center gap-3 px-4 py-4">
+                    {/* Artwork */}
+                    <button onClick={async () => {
+                            setIsGlassOpen(true);
+                            try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (e) { console.warn(e); }
+                        }}
+                        className="w-11 h-11 rounded-xl overflow-hidden shrink-0 bg-white/5 border border-white/10 shadow-lg">
+                        {currentTrack.artwork && !isResolving
+                            ? <img src={currentTrack.artwork} className="w-full h-full object-cover" alt="" />
+                            : <div className="w-full h-full flex items-center justify-center">
+                                <Mic2 size={14} className={clsx('text-white/20', isResolving && 'animate-pulse')} />
+                              </div>
+                        }
                     </button>
-                    <button
-                        onClick={handleDownload}
-                        className={clsx("p-2 transition-colors", downloadState === 'done' ? "text-primary-400" : "text-white/20 hover:text-white")}
-                    >
-                        {downloadState === 'downloading' ? <Loader2 size={16} className="animate-spin text-primary-400" /> : <Download size={16} />}
-                    </button>
+
+                    {/* Track info */}
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-black text-white truncate leading-tight">{currentTrack.title}</p>
+                        <p className="text-[11px] text-white/30 truncate">{normalizeArtistName(currentTrack.artist)}</p>
+                    </div>
+
+                    {/* Mobile controls */}
+                    <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => toggleFavorite()}
+                            className={clsx('p-2 transition-all active:scale-90', currentTrack.favorite ? 'text-rose-400' : 'text-white/20')}>
+                            <Heart size={18} className={currentTrack.favorite ? 'fill-current' : ''} />
+                        </button>
+                        <button onClick={playPrevious} className="p-2 text-white/40 active:scale-90 transition-all">
+                            <SkipBack size={20} fill="currentColor" />
+                        </button>
+                        <button onClick={() => setIsPlaying(!isPlaying)}
+                            className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                            {isPlaying
+                                ? <Pause size={18} fill="currentColor" />
+                                : <Play size={18} fill="currentColor" className="ml-0.5" />
+                            }
+                        </button>
+                        <button onClick={playNext} className="p-2 text-white/40 active:scale-90 transition-all">
+                            <SkipForward size={20} fill="currentColor" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Center: Controls & Progress */}
-            <div className="flex-1 flex flex-col items-center gap-4 z-10" >
-                <div className="flex items-center gap-8">
-                    <button
-                        onClick={toggleShuffle}
-                        className={clsx("p-2 transition-all", shuffle ? "text-primary-500" : "text-white/20 hover:text-white")}
-                    >
-                        <Shuffle size={16} />
-                    </button>
-
-                    <button onClick={playPrevious} className="text-white/40 hover:text-white transition-colors">
-                        <SkipBack size={24} fill="currentColor" />
-                    </button>
-
-                    <button
-                        className="w-12 h-12 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg"
-                        onClick={() => setIsPlaying(!isPlaying)}
-                    >
-                        {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-0.5" />}
-                    </button>
-
-                    <button onClick={playNext} className="text-white/40 hover:text-white transition-colors">
-                        <SkipForward size={24} fill="currentColor" />
-                    </button>
-
-                    <button
-                        onClick={toggleRepeat}
-                        className={clsx("p-2 transition-all relative", repeat !== 'off' ? "text-primary-500" : "text-white/20 hover:text-white")}
-                    >
-                        <Repeat size={16} />
-                        {repeat === 'one' && <span className="absolute -top-0.5 -right-0.5 text-[8px] font-bold bg-primary-500 text-dark-950 w-3 h-3 rounded-full flex items-center justify-center">1</span>}
-                    </button>
+            {/* ── DESKTOP PLAYER (sm and above) ── */}
+            <div className="hidden sm:block h-[88px] bg-black/85 backdrop-blur-[100px] border-t border-white/[0.06] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] px-6">
+                {/* Progress bar — visible strip at the very top */}
+                <div className="absolute top-0 left-0 right-0 h-[3px] group/progress cursor-pointer">
+                    <div className="w-full h-full bg-white/[0.06]">
+                        <div className="h-full bg-white/70 group-hover/progress:bg-white transition-colors"
+                            style={{ width: `${progress}%` }} />
+                    </div>
+                    {/* Thumb dot on hover */}
+                    <div
+                        className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover/progress:opacity-100 transition-opacity pointer-events-none"
+                        style={{ left: `calc(${progress}% - 6px)` }}
+                    />
+                    <input type="range" min="0" max="100" step="0.1"
+                        value={progress || 0}
+                        onMouseDown={() => setIsSeeking(true)}
+                        onChange={handleSeekChange}
+                        onMouseUp={e => commitSeek(parseFloat(e.currentTarget.value))}
+                        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
+                        style={{ height: '16px', top: '-6px' }}
+                    />
                 </div>
 
-                <div className="w-full flex items-center gap-3 group" onMouseEnter={() => setIsHoveringProgress(true)} onMouseLeave={() => setIsHoveringProgress(false)}>
-                    <span className="text-[10px] font-medium font-mono text-white/30 w-8 text-right">
-                        {formatTime(currentTime)}
-                    </span>
+                <div className="flex items-center justify-between h-full max-w-[2000px] mx-auto gap-4 pt-2">
 
-                    <div className="flex-1 relative h-4 flex items-center">
-                        <input
-                            type="range"
-                            min="0" max="100" step="0.1"
-                            value={progress || 0}
-                            onMouseDown={() => setIsSeeking(true)}
-                            onChange={handleSeekChange}
-                            onMouseUp={(e) => commitSeek(parseFloat(e.currentTarget.value))}
-                            className="absolute z-20 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden relative">
-                            <motion.div
-                                className="h-full bg-white/60 relative"
-                                animate={{ width: `${progress}%` }}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                            />
-                        </div>
-                        <motion.div
-                            className="absolute h-3 w-3 bg-white rounded-full shadow-lg pointer-events-none"
-                            animate={{
-                                left: `${progress}%`,
-                                scale: isHoveringProgress ? 1 : 0,
-                                opacity: isHoveringProgress ? 1 : 0
+                    {/* LEFT: track info */}
+                    <div className="flex items-center gap-3 w-[30%] min-w-0">
+                        <button onClick={async () => {
+                                setIsGlassOpen(true);
+                                try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (e) { console.warn(e); }
                             }}
-                            style={{ marginLeft: '-6px' }}
-                        />
+                            className="w-10 h-10 rounded-[10px] overflow-hidden shrink-0 cursor-pointer bg-white/5 border border-white/10 group shadow-lg">
+                            {currentTrack.artwork && !isResolving
+                                ? <img src={currentTrack.artwork} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                : <div className="w-full h-full flex items-center justify-center">
+                                    <Mic2 size={14} className={clsx('text-white/20', isResolving && 'animate-pulse')} />
+                                  </div>
+                            }
+                        </button>
+                        <div className="flex flex-col min-w-0">
+                            <h4 className="text-[12px] font-black text-white/90 truncate leading-tight tracking-tight">{currentTrack.title}</h4>
+                            <p className="text-[10px] font-bold text-white/30 truncate mt-0.5 uppercase tracking-wider">{normalizeArtistName(currentTrack.artist)}</p>
+                        </div>
+                        <div className="flex items-center gap-1 ml-1 shrink-0">
+                            <button onClick={() => toggleFavorite()}
+                                className={clsx('hover:scale-110 transition-transform p-1', currentTrack.favorite ? 'text-rose-400' : 'text-white/20 hover:text-white/40')}>
+                                <Heart size={14} className={currentTrack.favorite ? 'fill-current' : ''} />
+                            </button>
+                            <div className="relative">
+                                <button onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+                                    className="text-white/20 hover:text-white transition-colors p-1">
+                                    <Plus size={15} />
+                                </button>
+                                <AnimatePresence>
+                                    {isAddMenuOpen && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setIsAddMenuOpen(false)} />
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                                                className="absolute bottom-full left-0 mb-3 w-52 bg-black/90 backdrop-blur-3xl border border-white/10 rounded-[20px] shadow-2xl z-50 overflow-hidden py-2"
+                                            >
+                                                <p className="px-4 py-2 text-[9px] font-black text-white/20 uppercase tracking-[0.2em]">Añadir a...</p>
+                                                <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                                                    {myPlaylists.map(p => (
+                                                        <button key={p.id} onClick={() => handleAddToPlaylist(p.id)}
+                                                            className="w-full text-left px-4 py-2 text-[11px] font-bold text-white/60 hover:text-white hover:bg-white/5 transition-colors truncate">
+                                                            {p.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        </>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
                     </div>
 
-                    <span className="text-[10px] font-medium font-mono text-white/30 w-8">
-                        {formatTime(duration)}
-                    </span>
-                </div>
-            </div >
-
-            {/* Right: Volume & Extras */}
-            < div className="w-1/4 min-w-[280px] flex items-center justify-end gap-5 z-10" >
-                <div
-                    className="flex items-center gap-3 bg-white/[0.03] px-4 py-2 rounded-xl border border-white/5 group"
-                    onMouseEnter={() => setIsHoveringVolume(true)}
-                    onMouseLeave={() => setIsHoveringVolume(false)}
-                >
-                    <button onClick={toggleMute} className="text-white/40 hover:text-white transition-colors">
-                        {muted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                    </button>
-                    <div className="w-20 relative h-4 flex items-center">
-                        <input
-                            type="range"
-                            min="0" max="1" step="0.01"
-                            value={muted ? 0 : volume}
-                            onChange={(e) => setVolume(parseFloat(e.target.value))}
-                            className="absolute z-20 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden relative">
-                            <motion.div
-                                className="h-full bg-primary-500/60"
-                                animate={{ width: `${(muted ? 0 : volume) * 100}%` }}
-                            />
+                    {/* CENTER: controls + time */}
+                    <div className="flex flex-col items-center gap-2 w-[40%]">
+                        <div className="flex items-center gap-6">
+                            <button onClick={toggleShuffle}
+                                className={clsx('transition-all', shuffle ? 'text-white' : 'text-white/15 hover:text-white/30')}>
+                                <Shuffle size={14} />
+                            </button>
+                            <button onClick={playPrevious} className="text-white/40 hover:text-white transition-all active:scale-90">
+                                <SkipBack size={20} fill="currentColor" />
+                            </button>
+                            <button onClick={() => setIsPlaying(!isPlaying)}
+                                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                                {isPlaying
+                                    ? <Pause size={20} fill="currentColor" />
+                                    : <Play size={20} fill="currentColor" className="ml-0.5" />
+                                }
+                            </button>
+                            <button onClick={playNext} className="text-white/40 hover:text-white transition-all active:scale-90">
+                                <SkipForward size={20} fill="currentColor" />
+                            </button>
+                            <button onClick={toggleRepeat}
+                                className={clsx('transition-all relative', repeat !== 'off' ? 'text-white' : 'text-white/15 hover:text-white/30')}>
+                                <Repeat size={14} />
+                                {repeat === 'one' && (
+                                    <span className="absolute -top-1.5 -right-1.5 text-[7px] font-black bg-white text-black w-3 h-3 rounded-full flex items-center justify-center">1</span>
+                                )}
+                            </button>
                         </div>
-                        <motion.div
-                            className="absolute h-2.5 w-2.5 bg-white rounded-full shadow-md pointer-events-none"
-                            animate={{
-                                left: `${(muted ? 0 : volume) * 100}%`,
-                                scale: isHoveringVolume ? 1 : 0
-                            }}
-                            style={{ marginLeft: '-5px' }}
-                        />
+                        <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-bold text-white/30 tabular-nums">{formatTime(currentTime)}</span>
+                            <span className="text-[9px] text-white/10">/</span>
+                            <span className="text-[9px] font-bold text-white/20 tabular-nums">{formatTime(duration)}</span>
+                        </div>
+                    </div>
+
+                    {/* RIGHT: volume + extras */}
+                    <div className="flex items-center justify-end gap-4 w-[30%]">
+                        <div className="flex items-center gap-2 group/volume w-28">
+                            <button onClick={toggleMute} className="text-white/20 hover:text-white transition-colors shrink-0">
+                                {muted || volume === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                            </button>
+                            <div className="flex-1 relative h-[3px] flex items-center">
+                                <input type="range" min="0" max="1" step="0.01"
+                                    value={muted ? 0 : volume}
+                                    onChange={e => setVolume(parseFloat(e.target.value))}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                                <div className="w-full bg-white/10 rounded-full h-full overflow-hidden">
+                                    <motion.div className="h-full bg-white/40 group-hover/volume:bg-white transition-colors"
+                                        animate={{ width: `${(muted ? 0 : volume) * 100}%` }} />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <button onClick={() => setIsLyricsOpen(!isLyricsOpen)}
+                                className={clsx('p-1.5 rounded-lg transition-all', isLyricsOpen ? 'text-white bg-white/10' : 'text-white/20 hover:text-white hover:bg-white/5')}>
+                                <Mic2 size={15} />
+                            </button>
+                            <button onClick={() => setIsQueueOpen(!isQueueOpen)}
+                                className={clsx('p-1.5 rounded-lg transition-all', isQueueOpen ? 'text-white bg-white/10' : 'text-white/20 hover:text-white hover:bg-white/5')}>
+                                <ListMusic size={15} />
+                            </button>
+                        </div>
                     </div>
                 </div>
-
-                <button
-                    onClick={() => setIsLyricsOpen(!isLyricsOpen)}
-                    className={clsx(
-                        "p-2.5 rounded-xl transition-all border border-white/5",
-                        isLyricsOpen ? "bg-primary-500 text-dark-950 shadow-lg border-primary-400" : "text-white/30 hover:text-white hover:bg-white/5"
-                    )}
-                >
-                    <Mic2 size={18} />
-                </button>
-
-                <button className="p-2.5 rounded-xl text-white/30 hover:text-white border border-white/5 hover:bg-white/5 transition-all">
-                    <ListMusic size={18} />
-                </button>
-            </div >
-        </motion.div >
+            </div>
+        </div>
     );
 };

@@ -19,7 +19,7 @@ console.log('[Mailer] SMTP Diagnostic:', {
 });
 
 const transporter = nodemailer.createTransport({
-  host: SMTP_HOST,
+  host: SMTP_HOST || 'smtp.gmail.com',
   port: SMTP_PORT,
   secure: SMTP_SECURE,
   auth: {

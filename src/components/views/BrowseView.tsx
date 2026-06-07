@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Play, TrendingUp, Radio, Sparkles, LayoutGrid } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MetadataEngine } from '../../utils/MetadataEngine';
+import { toSentenceCase } from '../../utils/formatters';
 import clsx from 'clsx';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -9,10 +10,10 @@ import clsx from 'clsx';
 type Tab = 'trending' | 'genres' | 'moods' | 'releases';
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
-    { key: 'trending', label: 'Top Charts', icon: TrendingUp },
+    { key: 'trending', label: 'Tendencias', icon: TrendingUp },
     { key: 'genres', label: 'Géneros', icon: LayoutGrid },
-    { key: 'moods', label: 'Moods', icon: Sparkles },
-    { key: 'releases', label: 'Estrenos', icon: Radio },
+    { key: 'moods', label: 'Estados de ánimo', icon: Sparkles },
+    { key: 'releases', label: 'Nuevos lanzamientos', icon: Radio },
 ];
 
 // ─── Genre/Mood cards ─────────────────────────────────────────────────────────
@@ -56,8 +57,14 @@ const AlbumCard = ({ data, onNavigate }: { data: any; onNavigate?: (view: string
                     {data.badge}
                 </div>
             )}
-            <div className="absolute bottom-3 right-3 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-400">
-                <button className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all">
+            <div className="absolute bottom-3 right-3 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onNavigate?.('album', { albumId: data.id, albumName: data.title, artistName: data.artist, from: 'browse' });
+                    }}
+                    className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all"
+                >
                     <Play size={18} fill="currentColor" className="ml-0.5" />
                 </button>
             </div>
@@ -69,9 +76,13 @@ const AlbumCard = ({ data, onNavigate }: { data: any; onNavigate?: (view: string
 
 // ─── Genre/Mood Card ──────────────────────────────────────────────────────────
 
-const CategoryCard = ({ item }: { item: { label: string; color: string; emoji: string } }) => (
+const CategoryCard = ({ item, onNavigate }: { 
+    item: { label: string; color: string; emoji: string };
+    onNavigate?: (view: string, params?: any) => void;
+}) => (
     <motion.div
         whileHover={{ scale: 1.03, y: -4 }}
+        onClick={() => onNavigate?.('search', { query: item.label })}
         className={clsx("relative rounded-2xl overflow-hidden cursor-pointer border border-white/5 bg-gradient-to-br", item.color)}
         style={{ aspectRatio: '2/1' }}
     >
@@ -131,8 +142,8 @@ export const BrowseView = ({ onNavigate }: { onNavigate?: (view: string, params?
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-4xl font-bold text-white tracking-tight mb-1">Explorar</h1>
-                    <p className="text-white/30 text-xs tracking-[0.25em] uppercase">Descubre nueva música</p>
+                    <h1 className="text-4xl font-bold text-white tracking-tight mb-1">{toSentenceCase('Explorar')}</h1>
+                    <p className="text-white/30 text-xs tracking-[0.05em]">{toSentenceCase('Descubre nueva música relevante para ti')}</p>
                 </div>
 
                 {/* Tabs */}
@@ -142,14 +153,14 @@ export const BrowseView = ({ onNavigate }: { onNavigate?: (view: string, params?
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key)}
                             className={clsx(
-                                "flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-bold transition-all duration-300 uppercase tracking-wider",
+                                "flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-bold transition-all duration-300 tracking-wide",
                                 activeTab === tab.key
                                     ? "bg-white text-black shadow-lg"
                                     : "text-white/30 hover:text-white/60"
                             )}
                         >
                             <tab.icon size={11} />
-                            {tab.label}
+                            {toSentenceCase(tab.label)}
                         </button>
                     ))}
                 </div>
@@ -192,7 +203,7 @@ export const BrowseView = ({ onNavigate }: { onNavigate?: (view: string, params?
                                     animate={{ opacity: 1, scale: 1 }}
                                     transition={{ delay: i * 0.05 }}
                                 >
-                                    <CategoryCard item={cat} />
+                                    <CategoryCard item={cat} onNavigate={onNavigate} />
                                 </motion.div>
                             ))}
                         </div>

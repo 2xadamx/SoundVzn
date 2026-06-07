@@ -2,23 +2,21 @@ import React, { useRef, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { PlayerBar } from '../player/PlayerBar';
+import { QueuePanel } from '../player/QueuePanel';
 import { usePlayerStore } from '../../store/player';
-import { shallow } from 'zustand/shallow';
+import { GlassCenter } from '../views/GlassCenter';
 import { LyricsView } from '../views/LyricsView';
-import { AnimatePresence } from 'framer-motion';
+import { YouTubeHybridPlayer } from '../player/YouTubeHybridPlayer';
+import { AnimatePresence, motion } from 'framer-motion';
 import clsx from 'clsx';
+import { initAudioProcessor } from '../../utils/audioProcessor';
+import { Home, Search, Users, ListMusic, User } from 'lucide-react';
 
 interface MainLayoutProps {
     children?: React.ReactNode;
     currentView: string;
     onNavigate: (view: string, params?: any) => void;
 }
-
-// Singleton refs para AudioContext — persisten fuera del componente
-// para evitar "InvalidStateError: Failed to create MediaElementSource"
-const sharedAudioCtxRef: { current: AudioContext | null } = { current: null };
-const sharedSourceRef: { current: MediaElementAudioSourceNode | null } = { current: null };
-const sharedAnalyserRef: { current: AnalyserNode | null } = { current: null };
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, onNavigate }) => {
     const {
@@ -28,216 +26,277 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
         muted,
         seekTo,
         setSeekTo,
-        repeat,
-        setIsPlaying,
         setCurrentTime,
         setDuration,
         playNext,
         checkScrobble,
         isLyricsOpen,
-        setAnalyser
-    } = usePlayerStore(
-        (state) => ({
-            currentTrack: state.currentTrack,
-            isPlaying: state.isPlaying,
-            volume: state.volume,
-            muted: state.muted,
-            seekTo: state.seekTo,
-            setSeekTo: state.setSeekTo,
-            repeat: state.repeat,
-            setIsPlaying: state.setIsPlaying,
-            setCurrentTime: state.setCurrentTime,
-            setDuration: state.setDuration,
-            playNext: state.playNext,
-            checkScrobble: state.checkScrobble,
-            isLyricsOpen: state.isLyricsOpen,
-            setAnalyser: state.setAnalyser,
-        }),
-        shallow
-    );
+        isQueueOpen,
+        isGlassOpen,
+        setIsGlassOpen,
+        activeAudio,
+        deckA,
+        deckB,
+        playbackSource,
+        playUnifiedTrack,
+        setPlaybackSource,
+        setYoutubeId,
+        addToast,
+        setIsPlaying,
+    } = usePlayerStore();
 
-    const audioRef = useRef<HTMLAudioElement>(null);
+    const audioRefA = useRef<HTMLAudioElement>(null);
+    const audioRefB = useRef<HTMLAudioElement>(null);
 
-    // ─── Inicialización única del elemento de audio ─────────────────────────────
-    useEffect(() => {
-        if (!audioRef.current) return;
-        const audioEl = audioRef.current;
+    const handleAudioError = (deckIndex: 0 | 1, event: any) => {
+        if (deckIndex !== activeAudio) return;
 
-        const setupAudioPipeline = () => {
-            try {
-                if (!sharedAudioCtxRef.current || sharedAudioCtxRef.current.state === 'closed') {
-                    const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
-                    sharedAudioCtxRef.current = new AudioContextClass();
-                }
-                const ctx = sharedAudioCtxRef.current;
+        const el = deckIndex === 0 ? audioRefA.current : audioRefB.current;
+        const ytId = currentTrack?.externalIds?.youtubeId || 
+                     (currentTrack?.id?.length === 11 ? currentTrack.id : null);
 
-                if (!sharedAnalyserRef.current) {
-                    sharedAnalyserRef.current = ctx.createAnalyser();
-                    sharedAnalyserRef.current.fftSize = 512; // Mejor resolución para el visualizador
-                }
-                const analyser = sharedAnalyserRef.current;
-
-                if (!sharedSourceRef.current) {
-                    sharedSourceRef.current = ctx.createMediaElementSource(audioEl);
-                    sharedSourceRef.current.connect(analyser);
-                    analyser.connect(ctx.destination);
-                }
-
-                setAnalyser(analyser);
-                if (ctx.state === 'suspended') ctx.resume().catch(() => { });
-            } catch (e) {
-                console.warn('Audio Pipeline Error:', e);
+        if (ytId && playbackSource === 'api') {
+            if (el && el.src && !el.src.includes('retry=')) {
+                console.warn(`[AudioEngine] Proxy stalled for ${currentTrack?.title}. Retrying...`);
+                const retryUrl = el.src.includes('?') ? `${el.src}&retry=${Date.now()}` : `${el.src}?retry=${Date.now()}`;
+                el.src = retryUrl;
+                el.load();
+                if (isPlaying) el.play().catch(() => {});
+                return;
             }
-        };
 
-        // Eventos centralizados para evitar duplicidad y memory leaks
-        const onPlay = () => {
-            if (sharedAudioCtxRef.current?.state === 'suspended') {
-                sharedAudioCtxRef.current.resume().catch(() => { });
+            console.warn(`[AudioEngine] Fallo persistente para ${currentTrack?.title}. Conmutando a IFrame...`);
+            
+            addToast({
+                type: 'info',
+                message: 'Stream inestable. Cambiando al reproductor alternativo...',
+                duration: 3500
+            });
+
+            setYoutubeId(ytId);
+            setPlaybackSource('iframe');
+            setIsPlaying(true);
+        } else {
+            // No ytId — backend not reachable or local file error
+            console.error('[AudioEngine] Error de reproducción sin fallback disponible:', event);
+            if (currentTrack) {
+                addToast({
+                    type: 'error',
+                    message: `No se puede reproducir "${currentTrack.title}" — comprueba el servidor`,
+                    duration: 4500
+                });
             }
-            setupAudioPipeline();
-        };
-
-        const onTimeUpdate = () => {
-            const time = audioEl.currentTime;
-            if (Number.isFinite(time)) {
-                setCurrentTime(time);
-                checkScrobble();
-            }
-        };
-
-        const onLoadedMetadata = () => {
-            const dur = audioEl.duration;
-            setDuration(Number.isFinite(dur) ? dur : 0);
-            audioEl.volume = muted ? 0 : volume;
-        };
-
-        const onCanPlay = () => {
-            if (isPlaying) audioEl.play().catch(() => { });
-        };
-
-        const onEnded = () => {
-            if (repeat === 'one') {
-                audioEl.currentTime = 0;
-                audioEl.play();
-            } else {
-                playNext();
-            }
-        };
-
-        const onError = (e: any) => {
-            console.error('Audio Element Error:', e);
             setIsPlaying(false);
-        };
+        }
+    };
 
-        audioEl.addEventListener('play', onPlay);
-        audioEl.addEventListener('timeupdate', onTimeUpdate);
-        audioEl.addEventListener('loadedmetadata', onLoadedMetadata);
-        audioEl.addEventListener('canplay', onCanPlay);
-        audioEl.addEventListener('ended', onEnded);
-        audioEl.addEventListener('error', onError);
 
-        // Pre-warm el context al primer click/interacción
-        const warmUp = () => {
-            onPlay();
-            window.removeEventListener('click', warmUp);
-        };
-        window.addEventListener('click', warmUp);
-
-        return () => {
-            audioEl.removeEventListener('play', onPlay);
-            audioEl.removeEventListener('timeupdate', onTimeUpdate);
-            audioEl.removeEventListener('loadedmetadata', onLoadedMetadata);
-            audioEl.removeEventListener('canplay', onCanPlay);
-            audioEl.removeEventListener('ended', onEnded);
-            audioEl.removeEventListener('error', onError);
-            window.removeEventListener('click', warmUp);
-        };
-    }, []); // Una sola vez al montar la app
-
-    // ─── Sincronizar estado del Store con el HTMLAudioElement ─────────────────
+    // ─── Inicialización del Motor de Audio ─────────────────────────────────────────
     useEffect(() => {
-        const audioEl = audioRef.current;
-        if (!audioEl) return;
+        if (audioRefA.current && audioRefB.current) {
+            initAudioProcessor(audioRefA.current, audioRefB.current).catch(console.error);
+        }
+    }, [audioRefA, audioRefB]);
 
-        // Volumen
-        audioEl.volume = muted ? 0 : volume;
-
-        // Play/Pause y Source
-        const currentSrc = audioEl.getAttribute('src');
-        const nextSrc = currentTrack?.filePath || '';
-
-        if (nextSrc !== currentSrc) {
-            console.log(`🎵 Switching track to: ${currentTrack?.title || 'Unknown'}`);
-            audioEl.pause();
-            if (nextSrc) {
-                audioEl.src = nextSrc;
-                audioEl.load();
-                if (isPlaying) audioEl.play().catch(() => { });
-            } else {
-                audioEl.removeAttribute('src');
-                audioEl.load();
+    // ─── Escuchar evento 'play-track' de las sugerencias del header ────────────────
+    useEffect(() => {
+        const handlePlayTrack = (e: any) => {
+            const track = e.detail;
+            if (track) {
+                console.log('[MainLayout] Evento play-track recibido:', track.title);
+                playUnifiedTrack(track).catch(console.warn);
             }
-        } else if (isPlaying && audioEl.paused && nextSrc) {
-            audioEl.play().catch(() => { });
-        } else if (!isPlaying && !audioEl.paused) {
-            audioEl.pause();
-        }
-    }, [isPlaying, currentTrack?.id, currentTrack?.filePath, volume, muted]);
+        };
+        window.addEventListener('play-track', handlePlayTrack);
+        return () => window.removeEventListener('play-track', handlePlayTrack);
+    }, [playUnifiedTrack]);
 
-    // ─── Seek ────────────────────────────────────────────────────────────────
     useEffect(() => {
-        if (seekTo == null || !Number.isFinite(seekTo)) return;
-        const audioEl = audioRef.current;
-        if (!audioEl) return;
-
-        try {
-            audioEl.currentTime = seekTo;
-            setCurrentTime(seekTo);
-        } catch (err) {
-            console.warn('Seek error:', err);
-        } finally {
-            setSeekTo(null);
+        if (currentView === 'dj-mixer') {
+            if (audioRefA.current && deckA.track) {
+                if (audioRefA.current.src !== deckA.track.filePath) audioRefA.current.src = deckA.track.filePath || '';
+                if (deckA.isPlaying) audioRefA.current.play().catch(() => {});
+                else audioRefA.current.pause();
+            }
+            if (audioRefB.current && deckB.track) {
+                if (audioRefB.current.src !== deckB.track.filePath) audioRefB.current.src = deckB.track.filePath || '';
+                if (deckB.isPlaying) audioRefB.current.play().catch(() => {});
+                else audioRefB.current.pause();
+            }
+            return;
         }
-    }, [seekTo, setCurrentTime, setSeekTo]);
+
+        // Si la fuente es el IFrame (YouTube), silenciar y pausar motores locales
+        if (playbackSource === 'iframe') {
+            if (audioRefA.current && !audioRefA.current.paused) audioRefA.current.pause();
+            if (audioRefB.current && !audioRefB.current.paused) audioRefB.current.pause();
+            return;
+        }
+
+        const el = activeAudio === 0 ? audioRefA.current : audioRefB.current;
+        const other = activeAudio === 0 ? audioRefB.current : audioRefA.current;
+
+        if (!el) return;
+
+        // Silenciar el deck inactivo
+        if (other && !other.paused) {
+            other.pause();
+        }
+
+        const targetSrc = currentTrack?.filePath || '';
+        if (!targetSrc) {
+            el.pause();
+            return;
+        }
+
+        // Cargar nueva fuente si cambió
+        const currentSrc = el.getAttribute('data-track-id');
+        if (currentSrc !== currentTrack?.id) {
+            el.pause();
+            el.src = targetSrc;
+            el.setAttribute('data-track-id', currentTrack?.id || '');
+            el.load();
+        }
+
+        el.volume = muted ? 0 : volume;
+
+        if (isPlaying) {
+            const playPromise = el.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.warn("[AudioEngine] Local playback blocked:", error);
+                });
+            }
+        } else {
+            el.pause();
+        }
+    }, [isPlaying, currentTrack?.id, currentTrack?.filePath, activeAudio, currentView, playbackSource]);
+
+    // ─── Sincronizar volumen ─────────────────────────────────────────────────────
+    useEffect(() => {
+        if (audioRefA.current) audioRefA.current.volume = muted ? 0 : volume;
+        if (audioRefB.current) audioRefB.current.volume = muted ? 0 : volume;
+    }, [volume, muted]);
+
+    // ─── Seek requests ───────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (seekTo == null) return;
+        const el = activeAudio === 0 ? audioRefA.current : audioRefB.current;
+        if (!el) return;
+
+        el.currentTime = seekTo;
+        setCurrentTime(seekTo);
+        setSeekTo(null);
+    }, [seekTo, setCurrentTime, setSeekTo, activeAudio]);
 
     return (
-        <div className="flex h-screen bg-transparent text-text-primary overflow-hidden font-sans selection:bg-primary/30 selection:text-white relative z-10 text-white">
-            {/* Reproductor de Audio — Singleton persistent element */}
-            <audio
-                ref={audioRef}
-                crossOrigin="anonymous"
-                preload="auto"
-                playsInline
-                style={{ position: 'fixed', left: '-9999px', opacity: 0, pointerEvents: 'none' }}
-                aria-hidden
+        <div className="flex flex-col h-screen bg-transparent text-white overflow-hidden font-base selection:bg-indigo-500/30 selection:text-white relative z-10 transition-colors duration-1000">
+            {/* Ambient Background Glows */}
+            <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden opacity-40">
+                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-white/[0.03] rounded-full blur-[140px] animate-soft-pulse" />
+                <div className="absolute bottom-[-10%] right-[-5%] w-[50%] h-[50%] bg-white/[0.02] rounded-full blur-[120px] animate-soft-pulse" style={{ animationDelay: '1s' }} />
+            </div>
+
+            {/* Dual Audio Engine */}
+            <audio ref={audioRefA} preload="auto"
+                onTimeUpdate={() => { if (activeAudio === 0 && audioRefA.current) { setCurrentTime(audioRefA.current.currentTime); checkScrobble?.(); } }}
+                onLoadedMetadata={() => { if (activeAudio === 0 && audioRefA.current) setDuration(audioRefA.current.duration || 0); }}
+                onEnded={() => activeAudio === 0 && playNext()}
+                onError={(e) => handleAudioError(0, e)}
+                onStalled={(e) => handleAudioError(0, e)}
+                className="hidden"
+            />
+            <audio ref={audioRefB} preload="auto"
+                onTimeUpdate={() => { if (activeAudio === 1 && audioRefB.current) { setCurrentTime(audioRefB.current.currentTime); checkScrobble?.(); } }}
+                onLoadedMetadata={() => { if (activeAudio === 1 && audioRefB.current) setDuration(audioRefB.current.duration || 0); }}
+                onEnded={() => activeAudio === 1 && playNext()}
+                onError={(e) => handleAudioError(1, e)}
+                onStalled={(e) => handleAudioError(1, e)}
+                className="hidden"
             />
 
+            <YouTubeHybridPlayer />
+
+            <div className="flex flex-1 overflow-hidden">
+                {/* Sidebar — hidden on mobile */}
+                {!isLyricsOpen && (
+                    <div className="hidden sm:block">
+                        <Sidebar currentView={currentView} onNavigate={onNavigate} />
+                    </div>
+                )}
+
+                <main className={clsx(
+                    "flex-1 relative flex flex-col min-w-0 transition-opacity duration-300",
+                    isLyricsOpen ? "opacity-0 pointer-events-none invisible" : "opacity-100",
+                    "bg-white/[0.015] backdrop-blur-[4px]"
+                )}>
+                    {/* Header — desktop and mobile (Header handles its own responsive layout) */}
+                    <Header onNavigate={onNavigate} currentView={currentView} />
+
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 sm:pt-4 scroll-smooth pb-40 sm:pb-24 custom-scrollbar">
+                        {children}
+                    </div>
+                </main>
+
+                <AnimatePresence>
+                    {isQueueOpen && !isLyricsOpen && (
+                        <div className="fixed inset-y-0 right-0 w-full sm:w-[380px] z-[300] pointer-events-none flex justify-end">
+                            <motion.div
+                                initial={{ x: 400, opacity: 0 }}
+                                animate={{ x: 0, opacity: 1 }}
+                                exit={{ x: 400, opacity: 0 }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                                className="h-full w-full pointer-events-auto shadow-[-20px_0_50px_rgba(0,0,0,0.5)] border-l border-white/5"
+                            >
+                                <QueuePanel />
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            <AnimatePresence>
+                {isGlassOpen && (
+                    <GlassCenter onNavigate={(view) => { setIsGlassOpen(false); onNavigate(view); }} />
+                )}
+            </AnimatePresence>
+
+            {/* LyricsView floats above GlassCenter (z-300) */}
             <AnimatePresence>
                 {isLyricsOpen && <LyricsView />}
             </AnimatePresence>
 
-            {!isLyricsOpen && currentView !== 'glass-center' && <Sidebar currentView={currentView} onNavigate={onNavigate} />}
+            {!isLyricsOpen && !isGlassOpen && <PlayerBar onNavigate={onNavigate} />}
 
-            <main className={clsx(
-                "flex-1 relative flex flex-col min-w-0 transition-opacity duration-300",
-                isLyricsOpen ? "opacity-0 pointer-events-none invisible" : "opacity-100"
-            )}>
-                {currentView !== 'glass-center' && <Header onNavigate={onNavigate} />}
-
-                <div className={clsx(
-                    "flex-1 overflow-y-auto p-8 pt-4 scroll-smooth",
-                    "pb-32"
-                )}>
-                    {children}
-                </div>
-            </main>
-
-            {!isLyricsOpen && currentView !== 'glass-center' && <PlayerBar onNavigate={onNavigate} />}
-
-            {/* Background Decor */}
-            <div className="fixed top-[-20%] left-[20%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
-            <div className="fixed bottom-[-10%] right-[-5%] w-[400px] h-[400px] bg-accent-blue/5 rounded-full blur-[100px] pointer-events-none" />
+            {/* ── Mobile Bottom Navigation Bar ── */}
+            {!isLyricsOpen && !isGlassOpen && (
+                <nav className="sm:hidden fixed bottom-[80px] left-0 right-0 z-[99] bg-black/80 backdrop-blur-3xl border-t border-white/[0.06] px-2 py-1 flex items-center justify-around">
+                    {([
+                        { id: 'home',     icon: Home,      label: 'Inicio' },
+                        { id: 'search',   icon: Search,    label: 'Buscar' },
+                        { id: 'friends',  icon: Users,     label: 'Social' },
+                        { id: 'playlists',icon: ListMusic, label: 'Listas' },
+                        { id: 'profile',  icon: User,      label: 'Perfil' },
+                    ] as const).map(item => {
+                        const active = currentView === item.id;
+                        return (
+                            <button key={item.id} onClick={() => onNavigate(item.id)}
+                                className={clsx(
+                                    'flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all',
+                                    active ? 'text-white' : 'text-white/25 hover:text-white/60'
+                                )}>
+                                <item.icon size={20} strokeWidth={active ? 2.5 : 1.5} />
+                                <span className={clsx('text-[9px] font-bold uppercase tracking-widest', active ? 'text-white' : 'text-white/20')}>
+                                    {item.label}
+                                </span>
+                                {active && (
+                                    <div className="w-1 h-1 rounded-full bg-white mt-0.5" />
+                                )}
+                            </button>
+                        );
+                    })}
+                </nav>
+            )}
         </div>
     );
 };
