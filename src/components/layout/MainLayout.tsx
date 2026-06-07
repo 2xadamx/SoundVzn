@@ -233,7 +233,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, currentView, o
                     {/* Header — desktop and mobile (Header handles its own responsive layout) */}
                     <Header onNavigate={onNavigate} currentView={currentView} />
 
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 sm:pt-4 scroll-smooth pb-40 sm:pb-24 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 sm:pt-4 scroll-smooth pb-48 sm:pb-24 custom-scrollbar">
                         {children}
                     </div>
                 </main>
