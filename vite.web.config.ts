@@ -61,10 +61,12 @@ export default defineConfig({
   plugins: [react()],
   build: {
     chunkSizeWarningLimit: 1800,
+    outDir: 'dist',
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          return id.includes('node_modules') ? 'vendor' : undefined;
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'framer-motion', 'lucide-react'],
+          three: ['three', '@react-three/fiber', '@react-three/drei']
         },
       },
     },
